@@ -5,6 +5,10 @@ from aiogram.types import Message, TelegramObject
 from src.config import BOT_TOKEN, ALLOWED_USER_ID
 from src.database import init_db
 from src.handlers import workout, analytics
+import sys
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
