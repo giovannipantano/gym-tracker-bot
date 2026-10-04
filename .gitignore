@@ -16,3 +16,6 @@ ENV/
 .idea/
 .DS_Store
 Thumbs.db
+
+# TXT
+to-do.txt
