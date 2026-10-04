@@ -2,22 +2,19 @@ import sys
 import asyncio
 import logging
 
-if sys.platform == "win32":
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
 from aiogram import Bot, Dispatcher, BaseMiddleware
 from aiogram.types import Message, TelegramObject, BotCommand
-from src.config import BOT_TOKEN, ALLOWED_USER_ID
 from src.database import init_db
 from src.handlers import workout, analytics
+from src.config import BOT_TOKEN, ALLOWED_USER_IDS
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 class WhitelistMiddleware(BaseMiddleware):
     async def __call__(self, handler, event: TelegramObject, data: dict):
-        if ALLOWED_USER_ID and isinstance(event, Message):
-            if event.from_user.id != ALLOWED_USER_ID:
-                logging.warning(f"Accesso non autorizzato da ID: {event.from_user.id}")
+        if ALLOWED_USER_IDS and isinstance(event, Message):
+            if event.from_user.id not in ALLOWED_USER_IDS:
+                logging.warning(f"Accesso non autorizzato tentato da ID: {event.from_user.id}")
                 return
         return await handler(event, data)
 
