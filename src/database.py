@@ -87,14 +87,49 @@ def get_workout_summary(workout_id: int):
         """, (workout_id,))
         return cursor.fetchall()
 
-def get_exercise_history(exercise_name: str):
+def get_exercise_history(exercise_query: str):
+    with sqlite3.connect(DATABASE_PATH) as conn:
+        cursor = conn.cursor()
+        search_term = f"%{exercise_query.strip().lower()}%"
+        cursor.execute("""
+            SELECT w.start_time, s.weight, s.reps, s.exercise_name
+            FROM sets s
+            JOIN workouts w ON s.workout_id = w.id
+            WHERE LOWER(s.exercise_name) LIKE ?
+            ORDER BY w.start_time ASC
+        """, (search_term,))
+        return cursor.fetchall()
+
+def get_recent_workouts(limit: int = 10):
     with sqlite3.connect(DATABASE_PATH) as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT w.start_time, s.weight, s.reps
-            FROM sets s
-            JOIN workouts w ON s.workout_id = w.id
-            WHERE LOWER(s.exercise_name) = LOWER(?)
-            ORDER BY w.start_time ASC
-        """, (exercise_name,))
+            SELECT w.id, w.start_time, w.split_name, 
+                   COUNT(DISTINCT s.exercise_name) as num_exercises,
+                   COUNT(s.id) as total_sets,
+                   COALESCE(SUM(s.weight * s.reps), 0) as total_volume
+            FROM workouts w
+            LEFT JOIN sets s ON w.id = s.workout_id
+            WHERE w.is_active = 0
+            GROUP BY w.id
+            ORDER BY w.start_time DESC
+            LIMIT ?
+        """, (limit,))
         return cursor.fetchall()
+
+def get_workout_details(workout_id: int):
+    with sqlite3.connect(DATABASE_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT split_name, start_time, end_time FROM workouts WHERE id = ?", (workout_id,))
+        meta = cursor.fetchone()
+        if not meta:
+            return None, []
+        
+        cursor.execute("""
+            SELECT exercise_name, set_order, weight, reps
+            FROM sets
+            WHERE workout_id = ?
+            ORDER BY exercise_name, set_order ASC
+        """, (workout_id,))
+        sets_data = cursor.fetchall()
+        return meta, sets_data

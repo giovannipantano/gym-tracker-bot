@@ -6,32 +6,38 @@ from src.charts import generate_progression_chart
 
 router = Router()
 
-@router.message(CommandStart())
-async def cmd_start_guide(message: Message):
-    guide_text = (
-        "<strong>Benvenuto nel tuo Gym Tracker Personale!</strong>\n\n"
-        "Ecco una guida rapida ai comandi e alla sintassi:\n\n"
-        "<strong>1. Gestione Sessione</strong>\n"
-        "• <code>/start_workout</code> — Avvia l'allenamento scegliendo lo split.\n"
-        "• <code>/fine</code> — Chiude la sessione e mostra il riassunto con tonnellaggio e carichi massimi.\n\n"
-        "<strong>2. Come registrare le serie</strong>\n"
-        "Mentre una sessione è attiva, invia semplicemente un messaggio con uno di questi formati:\n"
-        "• <code>panca 4x8 80</code> (4 serie uguali da 8 rep con 80 kg)\n"
-        "• <code>squat 100 8,8,7</code> (carico fisso da 100 kg con rep variabili)\n"
-        "• <code>stacco 140 5</code> (serie singola: 5 rep a 140 kg)\n\n"
-        "<strong>3. Statistiche e Grafici</strong>\n"
-        "• <code>/progressione <esercizio></code> — Genera il grafico dell'1RM stimato nel tempo.\n"
-        "  <em>Esempio:</em> <code>/progressione panca</code>"
+def get_guide_text() -> str:
+    return (
+        "📖 <b>Guida ai Comandi del Gym Tracker</b>\n\n"
+        "<b>🏋️ Gestione Allenamento:</b>\n"
+        "• /start_workout — Avvia una nuova sessione e seleziona lo split (Push, Pull, Legs...).\n"
+        "• /fine — Termina la sessione corrente e restituisce il riassunto con tonnellaggio e carichi.\n\n"
+        "<b>✍️ Come Registrare le Serie:</b>\n"
+        "Mentre la sessione è aperta, scrivi direttamente in chat:\n"
+        "• <code>panca 4x8 80</code> ➔ Registra 4 serie da 8 ripetizioni con 80 kg.\n"
+        "• <code>squat 100 8,8,7</code> ➔ Registra 3 serie a 100 kg (rispettivamente 8, 8 e 7 rep).\n"
+        "• <code>trazioni 15 3x6</code> ➔ Riconosce carichi e combinazioni di ripetizioni.\n\n"
+        "<b>📈 Statistiche & Storico:</b>\n"
+        "• /storico — Mostra gli ultimi workout effettuati con i pulsanti per ispezionare le serie.\n"
+        "• /progressione [esercizio] — Genera il grafico dell'1RM stimato nel tempo.\n"
+        "  <i>Esempio:</i> <code>/progressione panca</code> oppure <code>/progressione squat</code>\n\n"
+        "• /help — Mostra di nuovo questo messaggio."
     )
-    await message.answer(guide_text, parse_mode="HTML")
+
+@router.message(CommandStart())
+@router.message(Command("help"))
+async def cmd_start_and_help(message: Message):
+    await message.answer(get_guide_text(), parse_mode="HTML")
 
 @router.message(Command("progressione"))
 async def cmd_progression(message: Message):
     parts = message.text.split(maxsplit=1)
     if len(parts) < 2:
         await message.answer(
-            "Specifica il nome dell'esercizio.\n"
-            "<em>Esempio:</em> <code>/progressione panca</code>",
+            "⚠️ Specifica il nome dell'esercizio da tracciare.\n\n"
+            "<i>Esempi:</i>\n"
+            "• <code>/progressione panca</code>\n"
+            "• <code>/progressione squat</code>",
             parse_mode="HTML"
         )
         return
@@ -41,23 +47,22 @@ async def cmd_progression(message: Message):
 
     if not records:
         await message.answer(
-            f"Nessun dato registrato trovato per '<strong>{query}</strong>'.\n"
-            "Verifica di aver già registrato almeno una serie con questo nome in una sessione.",
+            f"❌ Nessun dato trovato per '<b>{query}</b>'.\n"
+            "Assicurati di aver registrato almeno una serie con questo esercizio durante un allenamento.",
             parse_mode="HTML"
         )
         return
 
-    # Recupera il nome dell'esercizio trovato nel database
     matched_name = records[0][3]
     chart_buf = generate_progression_chart(matched_name, records)
 
     if not chart_buf:
-        await message.answer("Errore durante la generazione del grafico.")
+        await message.answer("Errore nella generazione del grafico.")
         return
 
-    photo_file = BufferedInputFile(chart_buf.getvalue(), filename=f"{matched_name}_progressione.png")
+    photo_file = BufferedInputFile(chart_buf.getvalue(), filename=f"{matched_name}_progression.png")
     await message.answer_photo(
         photo=photo_file,
-        caption=f"Curva di progressione (1RM Stimato) per <strong>{matched_name}</strong>",
+        caption=f"📈 Progressione 1RM stimato per <b>{matched_name}</b>",
         parse_mode="HTML"
     )
