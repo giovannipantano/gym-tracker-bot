@@ -133,3 +133,34 @@ def get_workout_details(workout_id: int):
         """, (workout_id,))
         sets_data = cursor.fetchall()
         return meta, sets_data
+
+def delete_last_exercise_sets(workout_id: int) -> tuple[str, int] | None:
+    """Elimina tutte le serie dell'ultimo esercizio inserito nella sessione attiva."""
+    with sqlite3.connect(DATABASE_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT exercise_name, MAX(created_at)
+            FROM sets
+            WHERE workout_id = ?
+            GROUP BY exercise_name
+            ORDER BY MAX(created_at) DESC
+            LIMIT 1
+        """, (workout_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        
+        last_ex = row[0]
+        cursor.execute("DELETE FROM sets WHERE workout_id = ? AND exercise_name = ?", (workout_id, last_ex))
+        deleted_count = cursor.rowcount
+        conn.commit()
+        return last_ex, deleted_count
+
+def delete_workout(workout_id: int) -> bool:
+    """Elimina una sessione e tutte le sue serie correlate."""
+    with sqlite3.connect(DATABASE_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM sets WHERE workout_id = ?", (workout_id,))
+        cursor.execute("DELETE FROM workouts WHERE id = ?", (workout_id,))
+        conn.commit()
+        return cursor.rowcount > 0

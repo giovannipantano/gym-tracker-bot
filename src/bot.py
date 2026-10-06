@@ -23,7 +23,9 @@ async def setup_bot_commands(bot: Bot):
         BotCommand(command="start", description="Guida introduttiva e comandi"),
         BotCommand(command="start_workout", description="Inizia un allenamento"),
         BotCommand(command="fine", description="Termina la sessione corrente"),
+        BotCommand(command="annulla", description="Elimina l'ultimo esercizio inserito"),
         BotCommand(command="storico", description="Vedi i workout passati"),
+        BotCommand(command="elimina_workout", description="Cancella un workout passato"),
         BotCommand(command="progressione", description="Grafico 1RM (es. /progressione panca)"),
         BotCommand(command="help", description="Mostra spiegazione dettagliata"),
     ]
