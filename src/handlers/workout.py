@@ -15,7 +15,7 @@ from src.database import (
     delete_last_exercise_sets,
     delete_workout
 )
-from src.catalog import EXERCISE_CATALOG, get_exercises_for_split
+from src.catalog import WORKOUT_ROUTINES, get_routine_text, get_exercises_for_split
 from src.parser import parse_set_data_only, parse_set_message
 
 router = Router()
@@ -24,7 +24,7 @@ class WorkoutState(StatesGroup):
     selecting_exercise = State()
     waiting_for_sets = State()
 
-SPLITS = list(EXERCISE_CATALOG.keys())
+SPLITS = list(WORKOUT_ROUTINES.keys())
 
 def build_exercise_keyboard(split_name: str) -> InlineKeyboardMarkup:
     exercises = get_exercises_for_split(split_name)
@@ -57,8 +57,14 @@ async def on_split_selected(callback: CallbackQuery, state: FSMContext):
     start_new_workout(split_name)
     await state.set_state(WorkoutState.selecting_exercise)
     
+    # 1. Recupera il testo della scheda formattato
+    routine_text = get_routine_text(split_name)
+
+    # 2. Modifica il messaggio con la scheda completa
     await callback.message.edit_text(
-        f"🏋️ Sessione **{split_name}** avviata!\n\n"
+        f"🏋️ <b>Sessione {split_name} avviata!</b>\n\n"
+        f"{routine_text}\n\n"
+        "────────────────────\n"
         "Tocca l'esercizio che stai per eseguire:",
         reply_markup=build_exercise_keyboard(split_name),
         parse_mode="HTML"
