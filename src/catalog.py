@@ -1,52 +1,42 @@
 EXERCISE_CATALOG = {
     "Push": [
-        "Panca Piana Bilanciere",
-        "Panca Inclinata Manubri",
-        "Military Press",
-        "Dips Zavorrati",
-        "Alzate Laterali",
+        "Panca Piana",
+        "Panca Inclinata 70 Manubri",
+        "Alzate Laterali Manubrio",
         "Pushdown",
-        "French Press",
         "Alzate Laterali Cavo",
-        "Croci Cavi",
-        "Croci Panca Inclinata",
-        "Tricipiti Overhead"
+        "Croci Cavi"
     ],
     "Pull": [
-        "Stacco da Terra",
         "Trazioni Zavorrate",
-        "Rematore con Bilanciere",
-        "Pulley Basso",
-        "Lat Machine",
+        "Pulley",
         "Curl Bilanciere",
         "Hammer Curl",
-        "Face Pull"
+        "Rematore Manubrio"
     ],
     "Legs": [
-        "Squat con Bilanciere",
-        "Leg Press",
-        "Affondi con Manubri",
+        "Squat",
         "Leg Extension",
         "Leg Curl",
         "Calf Raise",
-        "Hip Thrust",
-        "Stacco Rumeno",
-        "Iperestensioni"
+        "Stacco Rumeno"
     ],
     "Upper": [
-        "Panca Piana Bilanciere",
+        "Dips Zavorrati",
         "Rematore con Bilanciere",
-        "Military Press",
-        "Trazioni alla Sbarra",
-        "Dip alle Parallele",
-        "Curl Manubri"
+        "Croci Panca Inclinata",
+        "Trazioni",
+        "Alzate Laterali",
+        "Del Posteriori",
+        "Tricipiti Overhead",
+        "Curl Panca Inclinata"
     ],
     "Lower": [
-        "Squat con Bilanciere",
-        "Stacco Rumeno",
         "Leg Press",
-        "Leg Curl",
-        "Calf Raise"
+        "Affondi Bulgari",
+        "Calf Raise",
+        "Hip Thrust",
+        "Iperestensioni"
     ],
     "Full Body": [
         "Squat con Bilanciere",
