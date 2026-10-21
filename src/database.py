@@ -167,7 +167,7 @@ def delete_workout(workout_id: int) -> bool:
 
 def get_exercise_progression(exercise_name: str):
     """Restituisce la progressione dell'1RM stimato per un dato esercizio nel tempo."""
-    with get_connection() as conn:
+    with sqlite3.connect(DATABASE_PATH) as conn:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT 
