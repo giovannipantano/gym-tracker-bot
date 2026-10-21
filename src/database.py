@@ -175,7 +175,7 @@ def get_exercise_progression(exercise_name: str):
                 MAX(s.weight * (1.0 + s.reps / 30.0)) as max_1rm
             FROM sets s
             JOIN workouts w ON s.workout_id = w.id
-            WHERE LOWER(s.exercise) LIKE LOWER(?)
+            WHERE LOWER(s.exercise_name) LIKE LOWER(?)
             GROUP BY w.id
             ORDER BY w.start_time ASC
         """, (f"%{exercise_name.strip()}%",))
