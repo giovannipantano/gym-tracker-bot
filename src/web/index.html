@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="it" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="GymTracker" />
+  <link rel="manifest" href="/static/manifest.json" />
+  <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2964/2964514.png" />
+  <title>Gym Tracker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-100 min-h-screen pb-24 select-none font-sans">
+
+  <!-- Header -->
+  <header class="p-4 border-b border-zinc-800 flex justify-between items-center sticky top-0 bg-zinc-950/90 backdrop-blur z-10">
+    <h1 class="text-xl font-bold tracking-tight">🏋️ Gym Tracker</h1>
+    <button onclick="changePin()" class="text-xs bg-zinc-800 px-3 py-1.5 rounded-lg text-zinc-400">🔑 PIN</button>
+  </header>
+
+  <main class="p-4 max-w-md mx-auto">
+
+    <!-- TAB 1: WORKOUT ATTIVO -->
+    <section id="tab-workout" class="space-y-4">
+      <div id="no-workout-view" class="hidden space-y-4">
+        <h2 class="text-lg font-semibold text-zinc-300">Inizia Allenamento</h2>
+        <div id="splits-grid" class="grid grid-cols-2 gap-3"></div>
+      </div>
+
+      <div id="active-workout-view" class="hidden space-y-4">
+        <div class="bg-zinc-900 p-4 rounded-2xl border border-zinc-800">
+          <div class="flex justify-between items-center mb-2">
+            <span id="active-split-badge" class="bg-blue-600/20 text-blue-400 text-xs font-bold px-2.5 py-1 rounded-full"></span>
+            <button onclick="endWorkout()" class="bg-red-600 hover:bg-red-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg">Termina</button>
+          </div>
+          <pre id="routine-reminder" class="text-xs text-zinc-400 whitespace-pre-wrap font-sans leading-relaxed mt-2"></pre>
+        </div>
+
+        <!-- Selezione Esercizio -->
+        <div class="space-y-2">
+          <label class="text-xs text-zinc-400 uppercase font-bold tracking-wider">1. Tocca l'esercizio</label>
+          <div id="exercise-buttons" class="flex flex-wrap gap-2"></div>
+        </div>
+
+        <!-- Form Inserimento Rapido -->
+        <div class="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 space-y-3">
+          <div class="text-sm font-semibold text-blue-400" id="selected-ex-label">Nessun esercizio selezionato</div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-xs text-zinc-400">Peso (kg)</label>
+              <input id="inp-weight" type="number" step="0.5" placeholder="80" class="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-lg font-bold text-center focus:outline-none focus:border-blue-500" />
+            </div>
+            <div>
+              <label class="text-xs text-zinc-400">Ripetizioni (es. 8 o 8,8,6)</label>
+              <input id="inp-reps" type="text" placeholder="8,8,7" class="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-lg font-bold text-center focus:outline-none focus:border-blue-500" />
+            </div>
+          </div>
+          <button onclick="submitSets()" class="w-full bg-blue-600 active:bg-blue-700 py-3.5 rounded-xl font-bold text-base shadow-lg">➕ Registra Serie</button>
+        </div>
+
+        <!-- Serie Registrate Oggi -->
+        <div class="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 space-y-2">
+          <div class="flex justify-between items-center">
+            <h3 class="text-sm font-bold text-zinc-300">Serie registrate</h3>
+            <button onclick="undoLast()" class="text-xs text-red-400 bg-red-950/40 px-2.5 py-1 rounded-lg">↩️ Annulla ultimo</button>
+          </div>
+          <div id="current-sets-list" class="text-sm text-zinc-400 space-y-1"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: STORICO -->
+    <section id="tab-history" class="hidden space-y-3">
+      <h2 class="text-lg font-semibold text-zinc-300">Ultimi Allenamenti</h2>
+      <div id="history-list" class="space-y-3"></div>
+    </section>
+
+    <!-- TAB 3: PROGRESSIONE 1RM -->
+    <section id="tab-stats" class="hidden space-y-4">
+      <h2 class="text-lg font-semibold text-zinc-300">Progressione 1RM Stimato</h2>
+      <div class="flex gap-2">
+        <input id="stat-ex-input" type="text" placeholder="Es. Panca, Squat..." class="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-sm" />
+        <button onclick="loadChart()" class="bg-blue-600 px-4 rounded-xl font-bold text-sm">Cerca</button>
+      </div>
+      <div class="bg-zinc-900 p-3 rounded-2xl border border-zinc-800">
+        <canvas id="progressionChart" height="220"></canvas>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Barra di Navigazione Inferiore stile iOS -->
+  <nav class="fixed bottom-0 left-0 right-0 bg-zinc-900/95 backdrop-blur border-t border-zinc-800 flex justify-around py-3 z-20">
+    <button onclick="switchTab('workout')" id="nav-workout" class="flex flex-col items-center text-blue-400 text-xs font-medium">
+      <span class="text-xl">💪</span><span>Workout</span>
+    </button>
+    <button onclick="switchTab('history')" id="nav-history" class="flex flex-col items-center text-zinc-500 text-xs font-medium">
+      <span class="text-xl">📋</span><span>Storico</span>
+    </button>
+    <button onclick="switchTab('stats')" id="nav-stats" class="flex flex-col items-center text-zinc-500 text-xs font-medium">
+      <span class="text-xl">📈</span><span>1RM</span>
+    </button>
+  </nav>
+
+  <script>
+    let apiKey = localStorage.getItem("gym_api_key") || "";
+    let catalog = {};
+    let selectedExercise = "";
+    let chartInstance = null;
+
+    async function api(path, options = {}) {
+      if (!apiKey) {
+        apiKey = prompt("Inserisci il PIN (API_KEY configurata nel .env):") || "";
+        localStorage.setItem("gym_api_key", apiKey);
+      }
+      options.headers = {
+        ...options.headers,
+        "Content-Type": "application/json",
+        "X-API-Key": apiKey
+      };
+      const res = await fetch(path, options);
+      if (res.status === 401) {
+        localStorage.removeItem("gym_api_key");
+        apiKey = "";
+        alert("PIN errato!");
+        throw new Error("Unauthorized");
+      }
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.detail || "Errore");
+        throw new Error(err.detail);
+      }
+      return res.json();
+    }
+
+    function changePin() {
+      const p = prompt("Inserisci il nuovo PIN:", apiKey);
+      if (p !== null) {
+        apiKey = p;
+        localStorage.setItem("gym_api_key", apiKey);
+        init();
+      }
+    }
+
+    async function init() {
+      catalog = await api("/api/catalog");
+      renderSplits();
+      await refreshActiveWorkout();
+    }
+
+    function renderSplits() {
+      const grid = document.getElementById("splits-grid");
+      grid.innerHTML = "";
+      Object.keys(catalog).forEach(split => {
+        const btn = document.createElement("button");
+        btn.className = "bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 p-5 rounded-2xl font-bold text-center text-lg active:scale-95 transition";
+        btn.textContent = split;
+        btn.onclick = () => startWorkout(split);
+        grid.appendChild(btn);
+      });
+    }
+
+    async function refreshActiveWorkout() {
+      const data = await api("/api/workout/active");
+      const noView = document.getElementById("no-workout-view");
+      const actView = document.getElementById("active-workout-view");
+
+      if (!data.active) {
+        noView.classList.remove("hidden");
+        actView.classList.add("hidden");
+        return;
+      }
+
+      noView.classList.add("hidden");
+      actView.classList.remove("hidden");
+      document.getElementById("active-split-badge").textContent = `SPLIT: ${data.split.toUpperCase()}`;
+
+      const cleanText = (data.routine.text || "").replace(/<\/?[^>]+(>|$)/g, "");
+      document.getElementById("routine-reminder").textContent = cleanText;
+
+      const exContainer = document.getElementById("exercise-buttons");
+      exContainer.innerHTML = "";
+      (data.routine.exercises || []).forEach(ex => {
+        const b = document.createElement("button");
+        const isSel = selectedExercise === ex;
+        b.className = `px-3 py-2 rounded-xl text-sm font-medium border transition ${isSel ? 'bg-blue-600 border-blue-500 text-white' : 'bg-zinc-900 border-zinc-800 text-zinc-300'}`;
+        b.textContent = ex;
+        b.onclick = () => {
+          selectedExercise = ex;
+          document.getElementById("selected-ex-label").textContent = `🎯 ${ex}`;
+          refreshActiveWorkout();
+        };
+        exContainer.appendChild(b);
+      });
+
+      // Raggruppa le serie registrate
+      const grouped = {};
+      data.sets.forEach(s => {
+        if (!grouped[s.exercise]) grouped[s.exercise] = [];
+        grouped[s.exercise].push(`${s.weight}kg×${s.reps}`);
+      });
+      const list = document.getElementById("current-sets-list");
+      list.innerHTML = Object.keys(grouped).length
+        ? Object.entries(grouped).map(([ex, sets]) => `<div><b class="text-zinc-200">${ex}:</b> ${sets.join(", ")}</div>`).join("")
+        : "Nessuna serie ancora registrata.";
+    }
+
+    async function startWorkout(split) {
+      await api("/api/workout/start", { method: "POST", body: JSON.stringify({ split_name: split }) });
+      selectedExercise = "";
+      await refreshActiveWorkout();
+    }
+
+    async function submitSets() {
+      if (!selectedExercise) return alert("Tocca prima un esercizio dalla lista!");
+      const weight = parseFloat(document.getElementById("inp-weight").value);
+      const repsRaw = document.getElementById("inp-reps").value.trim();
+      if (isNaN(weight) || !repsRaw) return alert("Inserisci peso e ripetizioni");
+
+      const repsList = repsRaw.split(/[\s,]+/).map(r => parseInt(r)).filter(r => !isNaN(r));
+      if (!repsList.length) return alert("Ripetizioni non valide");
+
+      const sets = repsList.map(r => [weight, r]);
+      await api("/api/workout/sets", {
+        method: "POST",
+        body: JSON.stringify({ exercise: selectedExercise, sets })
+      });
+
+      document.getElementById("inp-reps").value = "";
+      await refreshActiveWorkout();
+    }
+
+    async function undoLast() {
+      if (!confirm("Rimuovere l'ultimo esercizio inserito?")) return;
+      await api("/api/workout/sets/last", { method: "DELETE" });
+      await refreshActiveWorkout();
+    }
+
+    async function endWorkout() {
+      if (!confirm("Concludere l'allenamento?")) return;
+      await api("/api/workout/end", { method: "POST" });
+      selectedExercise = "";
+      await refreshActiveWorkout();
+    }
+
+    async function loadHistory() {
+      const list = await api("/api/workouts/history");
+      const container = document.getElementById("history-list");
+      if (!list.length) {
+        container.innerHTML = "<p class='text-zinc-500 text-sm'>Nessun workout nello storico.</p>";
+        return;
+      }
+      container.innerHTML = list.map(w => {
+        const grouped = {};
+        w.sets.forEach(s => {
+          if (!grouped[s.exercise]) grouped[s.exercise] = [];
+          grouped[s.exercise].push(`${s.weight}kg×${s.reps}`);
+        });
+        const details = Object.entries(grouped).map(([ex, s]) => `<div class="text-xs text-zinc-400">• <b>${ex}:</b> ${s.join(", ")}</div>`).join("");
+        return `
+          <div class="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 space-y-2">
+            <div class="flex justify-between items-center">
+              <div>
+                <span class="font-bold text-zinc-100">${w.split}</span>
+                <span class="text-xs text-zinc-400 ml-2">${w.date}</span>
+              </div>
+              <button onclick="deleteWorkout(${w.id})" class="text-xs text-red-400">🗑️ Elimina</button>
+            </div>
+            <div class="text-xs text-blue-400 font-medium">Volume: ${Math.round(w.volume)} kg (${w.sets_count} serie)</div>
+            <div class="space-y-1 pt-1 border-t border-zinc-800/60">${details}</div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    async function deleteWorkout(id) {
+      if (!confirm("Eliminare definitivamente questo workout?")) return;
+      await api(`/api/workouts/${id}`, { method: "DELETE" });
+      loadHistory();
+    }
+
+    async function loadChart() {
+      const ex = document.getElementById("stat-ex-input").value.trim();
+      if (!ex) return;
+      const data = await api(`/api/analytics/${encodeURIComponent(ex)}`);
+      if (!data.length) return alert("Nessun dato trovato per questo esercizio.");
+
+      const ctx = document.getElementById("progressionChart").getContext("2d");
+      if (chartInstance) chartInstance.destroy();
+      chartInstance = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: data.map(d => d.date),
+          datasets: [{
+            label: `1RM Stimato (${ex})`,
+            data: data.map(d => d["1rm"]),
+            borderColor: "#3b82f6",
+            backgroundColor: "rgba(59, 130, 246, 0.15)",
+            fill: true,
+            tension: 0.3
+          }]
+        },
+        options: {
+          plugins: { legend: { labels: { color: "#e4e4e7" } } },
+          scales: {
+            x: { ticks: { color: "#a1a1aa" } },
+            y: { ticks: { color: "#a1a1aa" } }
+          }
+        }
+      });
+    }
+
+    function switchTab(tab) {
+      ["workout", "history", "stats"].forEach(t => {
+        document.getElementById(`tab-${t}`).classList.add("hidden");
+        document.getElementById(`nav-${t}`).classList.replace("text-blue-400", "text-zinc-500");
+      });
+      document.getElementById(`tab-${tab}`).classList.remove("hidden");
+      document.getElementById(`nav-${tab}`).classList.replace("text-zinc-500", "text-blue-400");
+      if (tab === "workout") refreshActiveWorkout();
+      if (tab === "history") loadHistory();
+    }
+
+    init();
+  </script>
+</body>
+</html>

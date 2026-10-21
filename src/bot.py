@@ -31,24 +31,28 @@ async def setup_bot_commands(bot: Bot):
     ]
     await bot.set_my_commands(commands)
 
+import uvicorn
+from src.api import app as fastapi_app
+
 async def main():
     init_db()
-    
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher()
-
     dp.message.middleware(WhitelistMiddleware())
-
-    # Registra prima analytics (/start, /help, /progressione) e poi workout
-    dp.include_router(analytics.router)
     dp.include_router(workout.router)
+    dp.include_router(analytics.router)
 
     await setup_bot_commands(bot)
-    logging.info("Comandi del bot registrati nel client Telegram.")
 
-    logging.info("Bot in avvio con Long Polling...")
-    await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot)
+    # Configura il server FastAPI sulla porta 8000
+    config = uvicorn.Config(fastapi_app, host="0.0.0.0", port=8000, log_level="info")
+    server = uvicorn.Server(config)
+
+    logging.info("Avvio Bot Telegram + Server PWA sulla porta 8000...")
+    await asyncio.gather(
+        dp.start_polling(bot),
+        server.serve()
+    )
 
 if __name__ == "__main__":
     try:

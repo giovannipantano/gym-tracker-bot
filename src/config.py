@@ -17,3 +17,4 @@ ALLOWED_USER_IDS: set[int] = {
 }
 
 DATABASE_PATH = os.getenv("DATABASE_PATH", "workout_tracker.db")
+API_KEY = os.getenv("API_KEY", "1234")
