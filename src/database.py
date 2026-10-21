@@ -164,3 +164,19 @@ def delete_workout(workout_id: int) -> bool:
         cursor.execute("DELETE FROM workouts WHERE id = ?", (workout_id,))
         conn.commit()
         return cursor.rowcount > 0
+
+def get_exercise_progression(exercise_name: str):
+    """Restituisce la progressione dell'1RM stimato per un dato esercizio nel tempo."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT 
+                w.start_time,
+                MAX(s.weight * (1.0 + s.reps / 30.0)) as max_1rm
+            FROM sets s
+            JOIN workouts w ON s.workout_id = w.id
+            WHERE LOWER(s.exercise) LIKE LOWER(?)
+            GROUP BY w.id
+            ORDER BY w.start_time ASC
+        """, (f"%{exercise_name.strip()}%",))
+        return cursor.fetchall()
