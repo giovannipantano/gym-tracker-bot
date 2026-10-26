@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 ENV_PATH = "/home/ubuntu/gym-tracker-bot/.env"
 load_dotenv(ENV_PATH)
 
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 ALLOWED_USERS = os.getenv("ALLOWED_USER_IDS", "").split(",")
 TARGET_CHAT_ID = ALLOWED_USERS[0].strip() if ALLOWED_USERS and ALLOWED_USERS[0].strip() else None
 
@@ -19,7 +19,7 @@ BACKUP_PATH = f"/tmp/workout_tracker_backup_{TIMESTAMP}.db"
 
 def run_backup():
     if not BOT_TOKEN:
-        print("Errore: TELEGRAM_BOT_TOKEN non trovato nel file .env")
+        print("Errore: BOT_TOKEN non trovato nel file .env")
         return
 
     if not TARGET_CHAT_ID:
