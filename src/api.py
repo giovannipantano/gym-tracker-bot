@@ -27,8 +27,6 @@ def verify_key(x_api_key: str = Header(default="")):
     if x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="PIN/API Key non valida")
 
-from pydantic import BaseModel
-
 # Modelli per i payload delle API
 class StartWorkoutReq(BaseModel):
     split_name: str
@@ -74,7 +72,6 @@ def api_log_sets(req: LogSetsReq):
     active = get_active_workout()
     if not active:
         raise HTTPException(status_code=400, detail="Nessuna sessione attiva")
-    # Converte i modelli Pydantic in dizionari per il database
     entries = [s.model_dump() for s in req.sets]
     log_sets_batch(active[0], req.exercise, entries)
     return {"status": "ok"}
@@ -124,18 +121,20 @@ def api_delete_workout(workout_id: int):
         raise HTTPException(status_code=404, detail="Workout non trovato")
     return {"status": "deleted"}
 
+# 1. ROTTA STATICA: deve precedere tassativamente quella con {exercise}
+@app.get("/api/analytics/exercises", dependencies=[Depends(verify_key)])
+def api_distinct_exercises():
+    return get_distinct_logged_exercises()
+
+# 2. ROTTA DINAMICA: valuta il nome dell'esercizio
 @app.get("/api/analytics/{exercise}", dependencies=[Depends(verify_key)])
 def api_progression(exercise: str):
     data = get_exercise_progression(exercise)
     return [{"date": d[0][:10], "1rm": round(d[1], 1)} for d in data]
 
-# Servire i file statici della PWA
+# File statici e root PWA
 app.mount("/static", StaticFiles(directory="src/web"), name="static")
 
 @app.get("/")
 def serve_pwa():
     return FileResponse("src/web/index.html")
-
-@app.get("/api/analytics/exercises", dependencies=[Depends(verify_key)])
-def api_distinct_exercises():
-    return get_distinct_logged_exercises()
