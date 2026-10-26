@@ -27,6 +27,12 @@ def verify_key(x_api_key: str = Header(default="")):
     if x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="PIN/API Key non valida")
 
+from pydantic import BaseModel
+
+# Modelli per i payload delle API
+class StartWorkoutReq(BaseModel):
+    split_name: str
+
 class SetItem(BaseModel):
     weight: float = 0.0
     reps: int = 0
