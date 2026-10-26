@@ -20,12 +20,20 @@ def init_db():
                 workout_id INTEGER REFERENCES workouts(id) ON DELETE CASCADE,
                 exercise_name TEXT NOT NULL,
                 set_order INTEGER NOT NULL,
-                weight REAL NOT NULL,
-                reps INTEGER NOT NULL,
+                weight REAL DEFAULT 0.0,
+                reps INTEGER DEFAULT 0,
+                duration_seconds INTEGER,
                 rpe REAL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
+        
+        # Migrazione automatica se la colonna duration_seconds manca nelle installazioni esistenti
+        cursor.execute("PRAGMA table_info(sets)")
+        cols = [col[1] for col in cursor.fetchall()]
+        if "duration_seconds" not in cols:
+            cursor.execute("ALTER TABLE sets ADD COLUMN duration_seconds INTEGER")
+            
         conn.commit()
 
 def start_new_workout(split_name: str) -> int:
@@ -56,10 +64,17 @@ def end_active_workout(workout_id: int):
         )
         conn.commit()
 
-def log_sets_batch(workout_id: int, exercise: str, entries: list[tuple[float, int]]):
+def log_sets_batch(workout_id: int, exercise: str, entries: list[dict]):
+    """
+    entries: lista di dizionari, es:
+    [
+        {"weight": 80.0, "reps": 8, "duration": None},
+        {"weight": 0.0, "reps": 12, "duration": None},  # corpo libero
+        {"weight": 0.0, "reps": 0, "duration": 60}      # 60 secondi
+    ]
+    """
     with sqlite3.connect(DATABASE_PATH) as conn:
         cursor = conn.cursor()
-        # Ricava l'indice progressivo della serie per quell'esercizio
         cursor.execute(
             "SELECT COUNT(*) FROM sets WHERE workout_id = ? AND exercise_name = ?", 
             (workout_id, exercise)
@@ -67,11 +82,19 @@ def log_sets_batch(workout_id: int, exercise: str, entries: list[tuple[float, in
         current_count = cursor.fetchone()[0]
         
         to_insert = [
-            (workout_id, exercise, current_count + i + 1, weight, reps)
-            for i, (weight, reps) in enumerate(entries)
+            (
+                workout_id, 
+                exercise, 
+                current_count + i + 1, 
+                e.get("weight", 0.0) or 0.0, 
+                e.get("reps", 0) or 0, 
+                e.get("duration", None)
+            )
+            for i, e in enumerate(entries)
         ]
         cursor.executemany(
-            "INSERT INTO sets (workout_id, exercise_name, set_order, weight, reps) VALUES (?, ?, ?, ?, ?)",
+            """INSERT INTO sets (workout_id, exercise_name, set_order, weight, reps, duration_seconds) 
+               VALUES (?, ?, ?, ?, ?, ?)""",
             to_insert
         )
         conn.commit()
