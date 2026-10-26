@@ -214,7 +214,7 @@ def get_exercise_progression(exercise_name: str):
         return cursor.fetchall()
 
 def get_distinct_logged_exercises() -> list[str]:
-    """Restituisce la lista ordinata di tutti gli esercizi presenti nello storico."""
+    """Restituisce la lista ordinata di tutti gli esercizi registrati nel DB."""
     with sqlite3.connect(DATABASE_PATH) as conn:
         cursor = conn.cursor()
         cursor.execute("""
