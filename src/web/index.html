@@ -49,12 +49,12 @@
           <div class="text-sm font-semibold text-blue-400" id="selected-ex-label">Nessun esercizio selezionato</div>
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="text-xs text-zinc-400">Peso (kg)</label>
-              <input id="inp-weight" type="number" step="0.5" placeholder="80" class="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-lg font-bold text-center focus:outline-none focus:border-blue-500" />
+              <label class="text-xs text-zinc-400">Peso kg (vuoto = corpo libero)</label>
+              <input id="inp-weight" type="number" step="0.5" placeholder="Opzionale (es. 80)" class="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-base font-bold text-center focus:outline-none focus:border-blue-500" />
             </div>
             <div>
-              <label class="text-xs text-zinc-400">Ripetizioni (es. 8 o 8,8,6)</label>
-              <input id="inp-reps" type="text" placeholder="8,8,7" class="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-lg font-bold text-center focus:outline-none focus:border-blue-500" />
+              <label class="text-xs text-zinc-400">Reps o Tempi</label>
+              <input id="inp-reps" type="text" placeholder="es. 8,8,6 o 60s, 45s" class="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-base font-bold text-center focus:outline-none focus:border-blue-500" />
             </div>
           </div>
           <button onclick="submitSets()" class="w-full bg-blue-600 active:bg-blue-700 py-3.5 rounded-xl font-bold text-base shadow-lg">➕ Registra Serie</button>
@@ -81,8 +81,10 @@
     <section id="tab-stats" class="hidden space-y-4">
       <h2 class="text-lg font-semibold text-zinc-300">Progressione 1RM Stimato</h2>
       <div class="flex gap-2">
-        <input id="stat-ex-input" type="text" placeholder="Es. Panca, Squat..." class="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-sm" />
-        <button onclick="loadChart()" class="bg-blue-600 px-4 rounded-xl font-bold text-sm">Cerca</button>
+        <select id="stat-ex-select" class="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-sm text-zinc-200 focus:outline-none focus:border-blue-500">
+          <option value="">Seleziona un esercizio registrato...</option>
+        </select>
+        <button onclick="loadChartFromSelect()" class="bg-blue-600 active:bg-blue-700 px-5 rounded-xl font-bold text-sm">Mostra</button>
       </div>
       <div class="bg-zinc-900 p-3 rounded-2xl border border-zinc-800">
         <canvas id="progressionChart" height="220"></canvas>
@@ -105,225 +107,284 @@
   </nav>
 
   <script>
-    let apiKey = localStorage.getItem("gym_api_key") || "";
-    let catalog = {};
-    let selectedExercise = "";
-    let chartInstance = null;
+  let apiKey = localStorage.getItem("gym_api_key") || "";
+  let catalog = {};
+  let selectedExercise = "";
+  let chartInstance = null;
 
-    async function api(path, options = {}) {
-      if (!apiKey) {
-        apiKey = prompt("Inserisci il PIN (API_KEY configurata nel .env):") || "";
-        localStorage.setItem("gym_api_key", apiKey);
-      }
-      options.headers = {
-        ...options.headers,
-        "Content-Type": "application/json",
-        "X-API-Key": apiKey
+  async function api(path, options = {}) {
+    if (!apiKey) {
+      apiKey = prompt("Inserisci il PIN (API_KEY configurata nel .env):") || "";
+      localStorage.setItem("gym_api_key", apiKey);
+    }
+    options.headers = {
+      ...options.headers,
+      "Content-Type": "application/json",
+      "X-API-Key": apiKey
+    };
+    const res = await fetch(path, options);
+    if (res.status === 401) {
+      localStorage.removeItem("gym_api_key");
+      apiKey = "";
+      alert("PIN errato!");
+      throw new Error("Unauthorized");
+    }
+    if (!res.ok) {
+      const err = await res.json();
+      alert(err.detail || "Errore");
+      throw new Error(err.detail);
+    }
+    return res.json();
+  }
+
+  // Formatta la visualizzazione del set in base alla tipologia (peso, reps o tempo)
+  function formatSet(s) {
+    if (s.duration) {
+      return `${s.duration}s`;
+    }
+    if (s.weight && s.weight > 0) {
+      return `${s.weight}kg×${s.reps}`;
+    }
+    return `${s.reps} reps`;
+  }
+
+  function changePin() {
+    const p = prompt("Inserisci il nuovo PIN:", apiKey);
+    if (p !== null) {
+      apiKey = p;
+      localStorage.setItem("gym_api_key", apiKey);
+      init();
+    }
+  }
+
+  async function init() {
+    catalog = await api("/api/catalog");
+    renderSplits();
+    await refreshActiveWorkout();
+  }
+
+  function renderSplits() {
+    const grid = document.getElementById("splits-grid");
+    grid.innerHTML = "";
+    Object.keys(catalog).forEach(split => {
+      const btn = document.createElement("button");
+      btn.className = "bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 p-5 rounded-2xl font-bold text-center text-lg active:scale-95 transition";
+      btn.textContent = split;
+      btn.onclick = () => startWorkout(split);
+      grid.appendChild(btn);
+    });
+  }
+
+  async function refreshActiveWorkout() {
+    const data = await api("/api/workout/active");
+    const noView = document.getElementById("no-workout-view");
+    const actView = document.getElementById("active-workout-view");
+
+    if (!data.active) {
+      noView.classList.remove("hidden");
+      actView.classList.add("hidden");
+      return;
+    }
+
+    noView.classList.add("hidden");
+    actView.classList.remove("hidden");
+    document.getElementById("active-split-badge").textContent = `SPLIT: ${data.split.toUpperCase()}`;
+
+    const cleanText = (data.routine.text || "").replace(/<\/?[^>]+(>|$)/g, "");
+    document.getElementById("routine-reminder").textContent = cleanText;
+
+    const exContainer = document.getElementById("exercise-buttons");
+    exContainer.innerHTML = "";
+    (data.routine.exercises || []).forEach(ex => {
+      const b = document.createElement("button");
+      const isSel = selectedExercise === ex;
+      b.className = `px-3 py-2 rounded-xl text-sm font-medium border transition ${isSel ? 'bg-blue-600 border-blue-500 text-white' : 'bg-zinc-900 border-zinc-800 text-zinc-300'}`;
+      b.textContent = ex;
+      b.onclick = () => {
+        selectedExercise = ex;
+        document.getElementById("selected-ex-label").textContent = `🎯 ${ex}`;
+        refreshActiveWorkout();
       };
-      const res = await fetch(path, options);
-      if (res.status === 401) {
-        localStorage.removeItem("gym_api_key");
-        apiKey = "";
-        alert("PIN errato!");
-        throw new Error("Unauthorized");
-      }
-      if (!res.ok) {
-        const err = await res.json();
-        alert(err.detail || "Errore");
-        throw new Error(err.detail);
-      }
-      return res.json();
-    }
+      exContainer.appendChild(b);
+    });
 
-    function changePin() {
-      const p = prompt("Inserisci il nuovo PIN:", apiKey);
-      if (p !== null) {
-        apiKey = p;
-        localStorage.setItem("gym_api_key", apiKey);
-        init();
-      }
-    }
+    // Raggruppa le serie registrate usando formatSet()
+    const grouped = {};
+    data.sets.forEach(s => {
+      if (!grouped[s.exercise]) grouped[s.exercise] = [];
+      grouped[s.exercise].push(formatSet(s));
+    });
+    const list = document.getElementById("current-sets-list");
+    list.innerHTML = Object.keys(grouped).length
+      ? Object.entries(grouped).map(([ex, sets]) => `<div><b class="text-zinc-200">${ex}:</b> ${sets.join(", ")}</div>`).join("")
+      : "Nessuna serie ancora registrata.";
+  }
 
-    async function init() {
-      catalog = await api("/api/catalog");
-      renderSplits();
-      await refreshActiveWorkout();
-    }
+  async function startWorkout(split) {
+    await api("/api/workout/start", { method: "POST", body: JSON.stringify({ split_name: split }) });
+    selectedExercise = "";
+    await refreshActiveWorkout();
+  }
 
-    function renderSplits() {
-      const grid = document.getElementById("splits-grid");
-      grid.innerHTML = "";
-      Object.keys(catalog).forEach(split => {
-        const btn = document.createElement("button");
-        btn.className = "bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 p-5 rounded-2xl font-bold text-center text-lg active:scale-95 transition";
-        btn.textContent = split;
-        btn.onclick = () => startWorkout(split);
-        grid.appendChild(btn);
-      });
-    }
+  async function submitSets() {
+    if (!selectedExercise) return alert("Tocca prima un esercizio dalla lista!");
 
-    async function refreshActiveWorkout() {
-      const data = await api("/api/workout/active");
-      const noView = document.getElementById("no-workout-view");
-      const actView = document.getElementById("active-workout-view");
+    const weightInput = document.getElementById("inp-weight").value.trim();
+    const valRaw = document.getElementById("inp-reps").value.trim().toLowerCase();
+    if (!valRaw) return alert("Inserisci ripetizioni (es. 8,8,6) o tempi (es. 60s, 45s)!");
 
-      if (!data.active) {
-        noView.classList.remove("hidden");
-        actView.classList.add("hidden");
-        return;
-      }
+    // Se il campo peso è vuoto, imposta 0.0 (corpo libero)
+    const weight = weightInput !== "" ? parseFloat(weightInput) : 0.0;
+    const parts = valRaw.split(/[\s,]+/).filter(Boolean);
+    const setsPayload = [];
 
-      noView.classList.add("hidden");
-      actView.classList.remove("hidden");
-      document.getElementById("active-split-badge").textContent = `SPLIT: ${data.split.toUpperCase()}`;
-
-      const cleanText = (data.routine.text || "").replace(/<\/?[^>]+(>|$)/g, "");
-      document.getElementById("routine-reminder").textContent = cleanText;
-
-      const exContainer = document.getElementById("exercise-buttons");
-      exContainer.innerHTML = "";
-      (data.routine.exercises || []).forEach(ex => {
-        const b = document.createElement("button");
-        const isSel = selectedExercise === ex;
-        b.className = `px-3 py-2 rounded-xl text-sm font-medium border transition ${isSel ? 'bg-blue-600 border-blue-500 text-white' : 'bg-zinc-900 border-zinc-800 text-zinc-300'}`;
-        b.textContent = ex;
-        b.onclick = () => {
-          selectedExercise = ex;
-          document.getElementById("selected-ex-label").textContent = `🎯 ${ex}`;
-          refreshActiveWorkout();
-        };
-        exContainer.appendChild(b);
-      });
-
-      // Raggruppa le serie registrate
-      const grouped = {};
-      data.sets.forEach(s => {
-        if (!grouped[s.exercise]) grouped[s.exercise] = [];
-        grouped[s.exercise].push(`${s.weight}kg×${s.reps}`);
-      });
-      const list = document.getElementById("current-sets-list");
-      list.innerHTML = Object.keys(grouped).length
-        ? Object.entries(grouped).map(([ex, sets]) => `<div><b class="text-zinc-200">${ex}:</b> ${sets.join(", ")}</div>`).join("")
-        : "Nessuna serie ancora registrata.";
-    }
-
-    async function startWorkout(split) {
-      await api("/api/workout/start", { method: "POST", body: JSON.stringify({ split_name: split }) });
-      selectedExercise = "";
-      await refreshActiveWorkout();
-    }
-
-    async function submitSets() {
-      if (!selectedExercise) return alert("Tocca prima un esercizio dalla lista!");
-      const weight = parseFloat(document.getElementById("inp-weight").value);
-      const repsRaw = document.getElementById("inp-reps").value.trim();
-      if (isNaN(weight) || !repsRaw) return alert("Inserisci peso e ripetizioni");
-
-      const repsList = repsRaw.split(/[\s,]+/).map(r => parseInt(r)).filter(r => !isNaN(r));
-      if (!repsList.length) return alert("Ripetizioni non valide");
-
-      const sets = repsList.map(r => [weight, r]);
-      await api("/api/workout/sets", {
-        method: "POST",
-        body: JSON.stringify({ exercise: selectedExercise, sets })
-      });
-
-      document.getElementById("inp-reps").value = "";
-      await refreshActiveWorkout();
-    }
-
-    async function undoLast() {
-      if (!confirm("Rimuovere l'ultimo esercizio inserito?")) return;
-      await api("/api/workout/sets/last", { method: "DELETE" });
-      await refreshActiveWorkout();
-    }
-
-    async function endWorkout() {
-      if (!confirm("Concludere l'allenamento?")) return;
-      await api("/api/workout/end", { method: "POST" });
-      selectedExercise = "";
-      await refreshActiveWorkout();
-    }
-
-    async function loadHistory() {
-      const list = await api("/api/workouts/history");
-      const container = document.getElementById("history-list");
-      if (!list.length) {
-        container.innerHTML = "<p class='text-zinc-500 text-sm'>Nessun workout nello storico.</p>";
-        return;
-      }
-      container.innerHTML = list.map(w => {
-        const grouped = {};
-        w.sets.forEach(s => {
-          if (!grouped[s.exercise]) grouped[s.exercise] = [];
-          grouped[s.exercise].push(`${s.weight}kg×${s.reps}`);
-        });
-        const details = Object.entries(grouped).map(([ex, s]) => `<div class="text-xs text-zinc-400">• <b>${ex}:</b> ${s.join(", ")}</div>`).join("");
-        return `
-          <div class="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 space-y-2">
-            <div class="flex justify-between items-center">
-              <div>
-                <span class="font-bold text-zinc-100">${w.split}</span>
-                <span class="text-xs text-zinc-400 ml-2">${w.date}</span>
-              </div>
-              <button onclick="deleteWorkout(${w.id})" class="text-xs text-red-400">🗑️ Elimina</button>
-            </div>
-            <div class="text-xs text-blue-400 font-medium">Volume: ${Math.round(w.volume)} kg (${w.sets_count} serie)</div>
-            <div class="space-y-1 pt-1 border-t border-zinc-800/60">${details}</div>
-          </div>
-        `;
-      }).join("");
-    }
-
-    async function deleteWorkout(id) {
-      if (!confirm("Eliminare definitivamente questo workout?")) return;
-      await api(`/api/workouts/${id}`, { method: "DELETE" });
-      loadHistory();
-    }
-
-    async function loadChart() {
-      const ex = document.getElementById("stat-ex-input").value.trim();
-      if (!ex) return;
-      const data = await api(`/api/analytics/${encodeURIComponent(ex)}`);
-      if (!data.length) return alert("Nessun dato trovato per questo esercizio.");
-
-      const ctx = document.getElementById("progressionChart").getContext("2d");
-      if (chartInstance) chartInstance.destroy();
-      chartInstance = new Chart(ctx, {
-        type: "line",
-        data: {
-          labels: data.map(d => d.date),
-          datasets: [{
-            label: `1RM Stimato (${ex})`,
-            data: data.map(d => d["1rm"]),
-            borderColor: "#3b82f6",
-            backgroundColor: "rgba(59, 130, 246, 0.15)",
-            fill: true,
-            tension: 0.3
-          }]
-        },
-        options: {
-          plugins: { legend: { labels: { color: "#e4e4e7" } } },
-          scales: {
-            x: { ticks: { color: "#a1a1aa" } },
-            y: { ticks: { color: "#a1a1aa" } }
-          }
+    for (const part of parts) {
+      // Gestione formato temporale (es. "60s", "1m", "45s")
+      if (part.includes("s") || part.includes("m")) {
+        let sec = 0;
+        const m = part.match(/(\d+)m/);
+        if (m) sec += parseInt(m[1]) * 60;
+        const s = part.match(/(\d+)s/);
+        if (s) sec += parseInt(s[1]);
+        if (sec > 0) {
+          setsPayload.push({ weight: 0.0, reps: 0, duration: sec });
         }
-      });
+      } else {
+        // Gestione ripetizioni numeriche
+        const reps = parseInt(part);
+        if (!isNaN(reps)) {
+          setsPayload.push({ weight: isNaN(weight) ? 0.0 : weight, reps: reps, duration: null });
+        }
+      }
     }
 
-    function switchTab(tab) {
-      ["workout", "history", "stats"].forEach(t => {
-        document.getElementById(`tab-${t}`).classList.add("hidden");
-        document.getElementById(`nav-${t}`).classList.replace("text-blue-400", "text-zinc-500");
-      });
-      document.getElementById(`tab-${tab}`).classList.remove("hidden");
-      document.getElementById(`nav-${tab}`).classList.replace("text-zinc-500", "text-blue-400");
-      if (tab === "workout") refreshActiveWorkout();
-      if (tab === "history") loadHistory();
-    }
+    if (!setsPayload.length) return alert("Nessun dato valido inserito.");
 
-    init();
-  </script>
+    await api("/api/workout/sets", {
+      method: "POST",
+      body: JSON.stringify({ exercise: selectedExercise, sets: setsPayload })
+    });
+
+    document.getElementById("inp-reps").value = "";
+    await refreshActiveWorkout();
+  }
+
+  async function undoLast() {
+    if (!confirm("Rimuovere l'ultimo esercizio inserito?")) return;
+    await api("/api/workout/sets/last", { method: "DELETE" });
+    await refreshActiveWorkout();
+  }
+
+  async function endWorkout() {
+    if (!confirm("Concludere l'allenamento?")) return;
+    await api("/api/workout/end", { method: "POST" });
+    selectedExercise = "";
+    await refreshActiveWorkout();
+  }
+
+  async function loadHistory() {
+    const list = await api("/api/workouts/history");
+    const container = document.getElementById("history-list");
+    if (!list.length) {
+      container.innerHTML = "<p class='text-zinc-500 text-sm'>Nessun workout nello storico.</p>";
+      return;
+    }
+    container.innerHTML = list.map(w => {
+      const grouped = {};
+      w.sets.forEach(s => {
+        if (!grouped[s.exercise]) grouped[s.exercise] = [];
+        grouped[s.exercise].push(formatSet(s));
+      });
+      const details = Object.entries(grouped).map(([ex, s]) => `<div class="text-xs text-zinc-400">• <b>${ex}:</b> ${s.join(", ")}</div>`).join("");
+      return `
+        <div class="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 space-y-2">
+          <div class="flex justify-between items-center">
+            <div>
+              <span class="font-bold text-zinc-100">${w.split}</span>
+              <span class="text-xs text-zinc-400 ml-2">${w.date}</span>
+            </div>
+            <button onclick="deleteWorkout(${w.id})" class="text-xs text-red-400">🗑️ Elimina</button>
+          </div>
+          <div class="text-xs text-blue-400 font-medium">Volume: ${Math.round(w.volume)} kg (${w.sets_count} serie)</div>
+          <div class="space-y-1 pt-1 border-t border-zinc-800/60">${details}</div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  async function deleteWorkout(id) {
+    if (!confirm("Eliminare definitivamente questo workout?")) return;
+    await api(`/api/workouts/${id}`, { method: "DELETE" });
+    loadHistory();
+  }
+
+  // Popola la tendina con tutti gli esercizi registrati a database
+  async function loadExerciseList() {
+    const select = document.getElementById("stat-ex-select");
+    if (!select) return;
+    try {
+      const list = await api("/api/analytics/exercises");
+      select.innerHTML = '<option value="">Seleziona un esercizio...</option>';
+      list.forEach(ex => {
+        const opt = document.createElement("option");
+        opt.value = ex;
+        opt.textContent = ex;
+        select.appendChild(opt);
+      });
+    } catch (e) {
+      select.innerHTML = '<option value="">Errore caricamento</option>';
+    }
+  }
+
+  // Genera il grafico prendendo l'esercizio selezionato dal menu a tendina
+  async function loadChartFromSelect() {
+    const select = document.getElementById("stat-ex-select");
+    const ex = select ? select.value : "";
+    if (!ex) return alert("Seleziona prima un esercizio dall'elenco!");
+
+    const data = await api(`/api/analytics/${encodeURIComponent(ex)}`);
+    if (!data.length) return alert("Nessun dato registrato per questo esercizio.");
+
+    const ctx = document.getElementById("progressionChart").getContext("2d");
+    if (chartInstance) chartInstance.destroy();
+
+    chartInstance = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: data.map(d => d.date),
+        datasets: [{
+          label: `Progressione (${ex})`,
+          data: data.map(d => d["1rm"] ?? d.metric_value),
+          borderColor: "#3b82f6",
+          backgroundColor: "rgba(59, 130, 246, 0.15)",
+          fill: true,
+          tension: 0.3
+        }]
+      },
+      options: {
+        plugins: { legend: { labels: { color: "#e4e4e7" } } },
+        scales: {
+          x: { ticks: { color: "#a1a1aa" } },
+          y: { ticks: { color: "#a1a1aa" } }
+        }
+      }
+    });
+  }
+
+  function switchTab(tab) {
+    ["workout", "history", "stats"].forEach(t => {
+      document.getElementById(`tab-${t}`).classList.add("hidden");
+      document.getElementById(`nav-${t}`).classList.replace("text-blue-400", "text-zinc-500");
+    });
+    document.getElementById(`tab-${tab}`).classList.remove("hidden");
+    document.getElementById(`nav-${tab}`).classList.replace("text-zinc-500", "text-blue-400");
+    
+    if (tab === "workout") refreshActiveWorkout();
+    if (tab === "history") loadHistory();
+    if (tab === "stats") loadExerciseList();
+  }
+
+  init();
+</script>
 </body>
 </html>

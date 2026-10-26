@@ -149,7 +149,7 @@ def get_workout_details(workout_id: int):
             return None, []
         
         cursor.execute("""
-            SELECT exercise_name, set_order, weight, reps
+            SELECT exercise_name, set_order, weight, reps, duration_seconds
             FROM sets
             WHERE workout_id = ?
             ORDER BY exercise_name, set_order ASC
@@ -189,17 +189,38 @@ def delete_workout(workout_id: int) -> bool:
         return cursor.rowcount > 0
 
 def get_exercise_progression(exercise_name: str):
-    """Restituisce la progressione dell'1RM stimato per un dato esercizio nel tempo."""
+    """Calcola la progressione esatta per l'esercizio selezionato."""
     with sqlite3.connect(DATABASE_PATH) as conn:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT 
                 w.start_time,
-                MAX(s.weight * (1.0 + s.reps / 30.0)) as max_1rm
+                MAX(
+                    CASE 
+                        WHEN s.duration_seconds IS NOT NULL THEN s.duration_seconds
+                        WHEN s.weight > 0 THEN ROUND(s.weight * (1.0 + s.reps / 30.0), 1)
+                        ELSE s.reps
+                    END
+                ) as metric_value,
+                MAX(s.weight) as max_weight,
+                MAX(s.reps) as max_reps,
+                MAX(s.duration_seconds) as max_duration
             FROM sets s
             JOIN workouts w ON s.workout_id = w.id
-            WHERE LOWER(s.exercise_name) LIKE LOWER(?)
+            WHERE LOWER(TRIM(s.exercise_name)) = LOWER(TRIM(?))
             GROUP BY w.id
             ORDER BY w.start_time ASC
-        """, (f"%{exercise_name.strip()}%",))
+        """, (exercise_name.strip(),))
         return cursor.fetchall()
+
+def get_distinct_logged_exercises() -> list[str]:
+    """Restituisce la lista ordinata di tutti gli esercizi presenti nello storico."""
+    with sqlite3.connect(DATABASE_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT DISTINCT exercise_name 
+            FROM sets 
+            WHERE exercise_name IS NOT NULL AND TRIM(exercise_name) != ''
+            ORDER BY exercise_name COLLATE NOCASE ASC
+        """)
+        return [row[0] for row in cursor.fetchall()]

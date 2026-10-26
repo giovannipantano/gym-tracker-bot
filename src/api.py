@@ -16,7 +16,8 @@ from src.database import (
     get_workout_details,
     delete_last_exercise_sets,
     delete_workout,
-    get_exercise_progression
+    get_exercise_progression,
+    get_distinct_logged_exercises
 )
 
 app = FastAPI(title="Gym Tracker API")
@@ -26,12 +27,14 @@ def verify_key(x_api_key: str = Header(default="")):
     if x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="PIN/API Key non valida")
 
-class StartWorkoutReq(BaseModel):
-    split_name: str
+class SetItem(BaseModel):
+    weight: float = 0.0
+    reps: int = 0
+    duration: int | None = None
 
 class LogSetsReq(BaseModel):
     exercise: str
-    sets: list[tuple[float, int]]  # Lista di [peso, ripetizioni]
+    sets: list[SetItem]
 
 @app.get("/api/catalog", dependencies=[Depends(verify_key)])
 def api_get_catalog():
@@ -50,7 +53,7 @@ def api_get_active():
         "split": split_name,
         "start_time": start_time,
         "routine": WORKOUT_ROUTINES.get(split_name, {}),
-        "sets": [{"exercise": s[0], "order": s[1], "weight": s[2], "reps": s[3]} for s in sets]
+        "sets": [{"exercise": s[0], "order": s[1], "weight": s[2], "reps": s[3], "duration": s[4] if len(s) > 4 else None} for s in sets]
     }
 
 @app.post("/api/workout/start", dependencies=[Depends(verify_key)])
@@ -65,7 +68,9 @@ def api_log_sets(req: LogSetsReq):
     active = get_active_workout()
     if not active:
         raise HTTPException(status_code=400, detail="Nessuna sessione attiva")
-    log_sets_batch(active[0], req.exercise, req.sets)
+    # Converte i modelli Pydantic in dizionari per il database
+    entries = [s.model_dump() for s in req.sets]
+    log_sets_batch(active[0], req.exercise, entries)
     return {"status": "ok"}
 
 @app.delete("/api/workout/sets/last", dependencies=[Depends(verify_key)])
@@ -103,7 +108,7 @@ def api_history():
             "exercises_count": r[3],
             "sets_count": r[4],
             "volume": r[5],
-            "sets": [{"exercise": s[0], "weight": s[2], "reps": s[3]} for s in sets]
+            "sets": [{"exercise": s[0], "weight": s[2], "reps": s[3], "duration": s[4] if len(s) > 4 else None} for s in sets]
         })
     return res
 
@@ -124,3 +129,7 @@ app.mount("/static", StaticFiles(directory="src/web"), name="static")
 @app.get("/")
 def serve_pwa():
     return FileResponse("src/web/index.html")
+
+@app.get("/api/analytics/exercises", dependencies=[Depends(verify_key)])
+def api_distinct_exercises():
+    return get_distinct_logged_exercises()
