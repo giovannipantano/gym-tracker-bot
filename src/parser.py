@@ -1,45 +1,41 @@
-# src/parser.py
 import re
 
-def parse_set_data_only(text: str) -> list[tuple[float, int]] | None:
-    """
-    Riconosce solo la parte numerica quando l'esercizio è già selezionato:
-    - "4x8 80" -> 4 serie da 8 rep con 80kg
-    - "100 8,8,7" -> 3 serie a 100kg con 8, 8 e 7 rep
-    - "80 8" -> 1 serie da 8 rep con 80kg
-    """
-    text = text.strip()
-
-    # Formato NxR: "4x8 80"
-    m_nxr = re.match(r"^(\d+)\s*[xX]\s*(\d+)\s+([\d\.]+)$", text)
-    if m_nxr:
-        sets_count, reps, weight = m_nxr.groups()
-        return [(float(weight), int(reps))] * int(sets_count)
-
-    # Formato carico fisso + rep: "100 8,8,7" o "80 8"
-    m_var = re.match(r"^([\d\.]+)\s+([\d\s,]+)$", text)
-    if m_var:
-        weight, reps_str = m_var.groups()
-        reps_tokens = re.findall(r"\d+", reps_str)
-        if reps_tokens:
-            return [(float(weight), int(r)) for r in reps_tokens]
-
-    return None
-
-def parse_set_message(text: str) -> tuple[str, list[tuple[float, int]]] | None:
-    """Mantiene compatibilità se scrivi direttamente tutto assieme: 'panca 4x8 80'"""
-    text = text.strip()
+def parse_set_input(text: str) -> list[dict]:
+    text = text.strip().lower()
+    entries = []
     
-    pattern_nxr = re.match(r"^([a-zA-Z\s]+)\s+(\d+)\s*[xX]\s*(\d+)\s+([\d\.]+)$", text)
-    if pattern_nxr:
-        ex, sets_count, reps, weight = pattern_nxr.groups()
-        return ex.strip().title(), [(float(weight), int(reps))] * int(sets_count)
+    # Caso 1: Esercizio a tempo (es. "60s, 45s", "1m, 30s")
+    if "s" in text or "m" in text:
+        parts = re.split(r'[\s,]+', text)
+        for part in parts:
+            if not part:
+                continue
+            sec = 0
+            if "m" in part:
+                m_match = re.search(r'(\d+)m', part)
+                if m_match:
+                    sec += int(m_match.group(1)) * 60
+            if "s" in part:
+                s_match = re.search(r'(\d+)s', part)
+                if s_match:
+                    sec += int(s_match.group(1))
+            elif part.isdigit():
+                sec += int(part)
+            if sec > 0:
+                entries.append({"weight": 0.0, "reps": 0, "duration": sec})
+        return entries
 
-    pattern_var = re.match(r"^([a-zA-Z\s]+)\s+([\d\.]+)\s+([\d\s,]+)$", text)
-    if pattern_var:
-        ex, weight, reps_str = pattern_var.groups()
-        reps_tokens = re.findall(r"\d+", reps_str)
-        if reps_tokens:
-            return ex.strip().title(), [(float(weight), int(r)) for r in reps_tokens]
+    # Caso 2: Con peso specificato (es. "80kg 8,8,6" oppure "80 x 8, 8")
+    weight_match = re.search(r'^(\d+(?:\.\d+)?)\s*(?:kg|x)?\s+(.+)$', text)
+    if weight_match:
+        weight = float(weight_match.group(1))
+        reps_str = weight_match.group(2)
+        reps_list = [int(r) for r in re.findall(r'\b\d+\b', reps_str)]
+        return [{"weight": weight, "reps": r, "duration": None} for r in reps_list]
 
-    return None
+    # Caso 3: Solo ripetizioni (es. "10, 10, 8")
+    reps_list = [int(r) for r in re.findall(r'\b\d+\b', text)]
+    if reps_list:
+        return [{"weight": 0.0, "reps": r, "duration": None} for r in reps_list]
+
+    return []
