@@ -2,389 +2,595 @@
 <html lang="it" class="dark">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="GymTracker" />
+  <meta name="theme-color" content="#000000" />
   <link rel="manifest" href="/static/manifest.json" />
   <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2964/2964514.png" />
   <title>Gym Tracker</title>
+  
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  
+  <style>
+    /* Tipografia e finiture native iOS */
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -webkit-tap-highlight-color: transparent;
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
+    }
+    .pb-safe {
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    /* Scrollbar nascosta per picker orizzontali */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
 </head>
-<body class="bg-zinc-950 text-zinc-100 min-h-screen pb-24 select-none font-sans">
+<body class="bg-black text-white min-h-screen select-none">
 
-  <!-- Header -->
-  <header class="p-4 border-b border-zinc-800 flex justify-between items-center sticky top-0 bg-zinc-950/90 backdrop-blur z-10">
-    <h1 class="text-xl font-bold tracking-tight">🏋️ Gym Tracker</h1>
-    <button onclick="changePin()" class="text-xs bg-zinc-800 px-3 py-1.5 rounded-lg text-zinc-400">🔑 PIN</button>
+  <!-- Header Stile iOS Large Title / Frosted Bar -->
+  <header class="sticky top-0 z-30 bg-black/75 backdrop-blur-xl border-b border-white/[0.08] px-5 py-3.5 flex justify-between items-center">
+    <div class="flex items-center space-x-2">
+      <div class="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+        </svg>
+      </div>
+      <h1 class="text-xl font-bold tracking-tight text-white">Gym Tracker</h1>
+    </div>
+    <button onclick="changePin()" class="flex items-center space-x-1.5 text-xs font-semibold bg-[#1C1C1E] active:bg-[#2C2C2E] text-zinc-300 px-3 py-1.5 rounded-full border border-white/10 transition">
+      <svg class="w-3.5 h-3.5 text-zinc-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
+      </svg>
+      <span>PIN</span>
+    </button>
   </header>
 
-  <main class="p-4 max-w-md mx-auto">
+  <main class="p-4 max-w-lg mx-auto space-y-5">
 
-    <!-- TAB 1: WORKOUT ATTIVO -->
+    <!-- ==================== TAB 1: WORKOUT ATTIVO ==================== -->
     <section id="tab-workout" class="space-y-4">
-      <div id="no-workout-view" class="hidden space-y-4">
-        <h2 class="text-lg font-semibold text-zinc-300">Inizia Allenamento</h2>
+      
+      <!-- Schermata Selezione Split (Quando non c'è workout attivo) -->
+      <div id="no-workout-view" class="hidden space-y-4 pt-2">
+        <div>
+          <h2 class="text-2xl font-bold tracking-tight text-white">Inizia Sessione</h2>
+          <p class="text-xs text-zinc-400 mt-1">Scegli la scheda di allenamento programmata</p>
+        </div>
         <div id="splits-grid" class="grid grid-cols-2 gap-3"></div>
       </div>
 
+      <!-- Schermata Workout in Corso -->
       <div id="active-workout-view" class="hidden space-y-4">
-        <div class="bg-zinc-900 p-4 rounded-2xl border border-zinc-800">
-          <div class="flex justify-between items-center mb-2">
-            <span id="active-split-badge" class="bg-blue-600/20 text-blue-400 text-xs font-bold px-2.5 py-1 rounded-full"></span>
-            <button onclick="endWorkout()" class="bg-red-600 hover:bg-red-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg">Termina</button>
+        
+        <!-- Scheda Riepilogo Routine Attiva -->
+        <div class="bg-[#1C1C1E] rounded-3xl p-4 border border-white/[0.08] shadow-sm space-y-3">
+          <div class="flex justify-between items-center">
+            <span id="active-split-badge" class="bg-blue-500/20 text-blue-400 text-[11px] font-bold px-3 py-1 rounded-full uppercase tracking-wider"></span>
+            <button onclick="endWorkout()" class="bg-red-500/15 hover:bg-red-500/25 active:scale-95 text-red-400 text-xs font-semibold px-3 py-1.5 rounded-full transition">Termina</button>
           </div>
-          <pre id="routine-reminder" class="text-xs text-zinc-400 whitespace-pre-wrap font-sans leading-relaxed mt-2"></pre>
+          <pre id="routine-reminder" class="text-xs text-zinc-300 font-sans whitespace-pre-wrap leading-relaxed bg-[#2C2C2E]/60 p-3 rounded-2xl border border-white/5"></pre>
         </div>
 
-        <!-- Selezione Esercizio -->
+        <!-- Selettore Esercizi a Scorrimento / Capsule -->
         <div class="space-y-2">
-          <label class="text-xs text-zinc-400 uppercase font-bold tracking-wider">1. Tocca l'esercizio</label>
+          <label class="text-[11px] text-zinc-400 uppercase font-bold tracking-wider px-1">Seleziona Esercizio</label>
           <div id="exercise-buttons" class="flex flex-wrap gap-2"></div>
         </div>
 
-        <!-- Form Inserimento Rapido -->
-        <div class="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 space-y-3">
-          <div class="text-sm font-semibold text-blue-400" id="selected-ex-label">Nessun esercizio selezionato</div>
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="text-xs text-zinc-400">Peso kg (vuoto = corpo libero)</label>
-              <input id="inp-weight" type="number" step="0.5" placeholder="Opzionale (es. 80)" class="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-base font-bold text-center focus:outline-none focus:border-blue-500" />
+        <!-- Box Inserimento Serie & Feedback Ultima Sessione -->
+        <div class="bg-[#1C1C1E] rounded-3xl p-4 border border-white/[0.08] shadow-sm space-y-3">
+          <div class="flex justify-between items-center px-1">
+            <span class="text-xs font-semibold text-zinc-400">Target</span>
+            <span class="text-xs font-bold text-blue-400" id="selected-ex-label">Nessun esercizio selezionato</span>
+          </div>
+
+          <!-- Banner Prestazione Precedente (Direct Progressive Overload) -->
+          <div id="prev-perf-banner" class="hidden bg-[#2C2C2E]/70 border border-white/10 rounded-2xl p-3 space-y-1 transition-all">
+            <div class="flex justify-between text-[11px]">
+              <span class="text-zinc-400 uppercase font-semibold tracking-wider">Ultima prestazione</span>
+              <span id="prev-perf-date" class="text-zinc-400 font-medium"></span>
             </div>
-            <div>
-              <label class="text-xs text-zinc-400">Reps o Tempi</label>
-              <input id="inp-reps" type="text" placeholder="es. 8,8,6 o 60s, 45s" class="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-base font-bold text-center focus:outline-none focus:border-blue-500" />
+            <div id="prev-perf-sets" class="text-xs font-semibold text-amber-300 tracking-wide"></div>
+          </div>
+
+          <!-- Ingressi Numerici -->
+          <div class="grid grid-cols-2 gap-3">
+            <div class="bg-[#2C2C2E] p-2.5 rounded-2xl border border-white/5 focus-within:border-blue-500 transition">
+              <label class="block text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-1">Peso (kg)</label>
+              <input id="inp-weight" type="number" step="0.5" placeholder="0 (libero)" class="w-full bg-transparent text-lg font-bold text-white placeholder-zinc-600 focus:outline-none" />
+            </div>
+            <div class="bg-[#2C2C2E] p-2.5 rounded-2xl border border-white/5 focus-within:border-blue-500 transition">
+              <label class="block text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-1">Reps o Secondi</label>
+              <input id="inp-reps" type="text" placeholder="es. 8,8,6 o 60s" class="w-full bg-transparent text-lg font-bold text-white placeholder-zinc-600 focus:outline-none" />
             </div>
           </div>
-          <button onclick="submitSets()" class="w-full bg-blue-600 active:bg-blue-700 py-3.5 rounded-xl font-bold text-base shadow-lg">➕ Registra Serie</button>
+
+          <button onclick="submitSets()" class="w-full bg-[#0A84FF] active:bg-blue-600 active:scale-[0.98] py-3.5 rounded-2xl font-bold text-sm text-white shadow-lg shadow-blue-500/20 transition flex items-center justify-center space-x-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            <span>Registra Serie</span>
+          </button>
         </div>
 
         <!-- Serie Registrate Oggi -->
-        <div class="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 space-y-2">
-          <div class="flex justify-between items-center">
-            <h3 class="text-sm font-bold text-zinc-300">Serie registrate</h3>
-            <button onclick="undoLast()" class="text-xs text-red-400 bg-red-950/40 px-2.5 py-1 rounded-lg">↩️ Annulla ultimo</button>
+        <div class="bg-[#1C1C1E] rounded-3xl p-4 border border-white/[0.08] space-y-3">
+          <div class="flex justify-between items-center px-1">
+            <h3 class="text-xs font-bold text-zinc-300 uppercase tracking-wider">Log Allenamento Odierno</h3>
+            <button onclick="undoLast()" class="text-xs font-semibold text-red-400 hover:text-red-300 active:scale-95 transition">↩️ Annulla Ultimo</button>
           </div>
-          <div id="current-sets-list" class="text-sm text-zinc-400 space-y-1"></div>
+          <div id="current-sets-list" class="text-xs text-zinc-400 space-y-2"></div>
         </div>
+
       </div>
     </section>
 
-    <!-- TAB 2: STORICO -->
-    <section id="tab-history" class="hidden space-y-3">
-      <h2 class="text-lg font-semibold text-zinc-300">Ultimi Allenamenti</h2>
+
+    <!-- ==================== TAB 2: STORICO ==================== -->
+    <section id="tab-history" class="hidden space-y-4">
+      <div>
+        <h2 class="text-2xl font-bold tracking-tight text-white">Cronologia</h2>
+        <p class="text-xs text-zinc-400 mt-1">Archivio sessioni completate e volumi</p>
+      </div>
       <div id="history-list" class="space-y-3"></div>
     </section>
 
-    <!-- TAB 3: PROGRESSIONE 1RM -->
-    <section id="tab-stats" class="hidden space-y-4">
-      <h2 class="text-lg font-semibold text-zinc-300">Progressione 1RM Stimato</h2>
-      <div class="flex gap-2">
-        <select id="stat-ex-select" class="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-sm text-zinc-200 focus:outline-none focus:border-blue-500">
-          <option value="">Seleziona un esercizio registrato...</option>
-        </select>
-        <button onclick="loadChartFromSelect()" class="bg-blue-600 active:bg-blue-700 px-5 rounded-xl font-bold text-sm">Mostra</button>
+
+    <!-- ==================== TAB 3: ANALYTICS & 1RM ==================== -->
+    <section id="tab-stats" class="hidden space-y-5">
+      
+      <div>
+        <h2 class="text-2xl font-bold tracking-tight text-white">Metriche & Progressi</h2>
+        <p class="text-xs text-zinc-400 mt-1">Volume settimanale ed evoluzione sovraccarichi</p>
       </div>
-      <div class="bg-zinc-900 p-3 rounded-2xl border border-zinc-800">
-        <canvas id="progressionChart" height="220"></canvas>
+
+      <!-- Volume per Gruppo Muscolare (Ultimi 7 Giorni) -->
+      <div class="bg-[#1C1C1E] rounded-3xl p-4 border border-white/[0.08] space-y-3">
+        <span class="text-[11px] font-bold text-zinc-400 uppercase tracking-wider block">Volume Ultimi 7 Giorni (Serie Totali)</span>
+        <div id="weekly-volume-grid" class="grid grid-cols-3 gap-2"></div>
       </div>
+
+      <!-- Analisi del Singolo Esercizio -->
+      <div class="space-y-3">
+        <div class="flex gap-2">
+          <select id="stat-ex-select" class="flex-1 bg-[#1C1C1E] border border-white/[0.08] rounded-2xl p-3 text-xs font-medium text-white focus:outline-none focus:border-blue-500">
+            <option value="">Seleziona un esercizio...</option>
+          </select>
+          <button onclick="loadChartFromSelect()" class="bg-[#0A84FF] active:bg-blue-600 px-5 rounded-2xl font-bold text-xs text-white transition active:scale-95">Mostra</button>
+        </div>
+
+        <!-- Segmented Control Stile iOS -->
+        <div class="flex bg-[#1C1C1E] p-1 rounded-2xl border border-white/[0.08] text-xs">
+          <button onclick="setChartMetric('1rm')" id="btn-m-1rm" class="flex-1 py-1.5 rounded-xl font-bold bg-[#2C2C2E] text-white shadow-sm transition">1RM</button>
+          <button onclick="setChartMetric('volume')" id="btn-m-volume" class="flex-1 py-1.5 rounded-xl font-medium text-zinc-400 transition">Volume (kg)</button>
+          <button onclick="setChartMetric('max_weight')" id="btn-m-max_weight" class="flex-1 py-1.5 rounded-xl font-medium text-zinc-400 transition">Max Peso</button>
+        </div>
+
+        <div class="bg-[#1C1C1E] p-4 rounded-3xl border border-white/[0.08]">
+          <canvas id="progressionChart" height="230"></canvas>
+        </div>
+      </div>
+
     </section>
 
   </main>
 
-  <!-- Barra di Navigazione Inferiore stile iOS -->
-  <nav class="fixed bottom-0 left-0 right-0 bg-zinc-900/95 backdrop-blur border-t border-zinc-800 flex justify-around py-3 z-20">
-    <button onclick="switchTab('workout')" id="nav-workout" class="flex flex-col items-center text-blue-400 text-xs font-medium">
-      <span class="text-xl">💪</span><span>Workout</span>
+  <!-- ==================== BARRA DI NAVIGAZIONE INFERIORE (iOS TAB BAR) ==================== -->
+  <nav class="fixed bottom-0 left-0 right-0 bg-black/80 backdrop-blur-2xl border-t border-white/[0.08] flex justify-around py-2.5 pb-safe z-40">
+    <button onclick="switchTab('workout')" id="nav-workout" class="flex flex-col items-center text-[#0A84FF] transition">
+      <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+      </svg>
+      <span class="text-[10px] font-semibold tracking-tight">Workout</span>
     </button>
-    <button onclick="switchTab('history')" id="nav-history" class="flex flex-col items-center text-zinc-500 text-xs font-medium">
-      <span class="text-xl">📋</span><span>Storico</span>
+    <button onclick="switchTab('history')" id="nav-history" class="flex flex-col items-center text-zinc-500 transition">
+      <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      <span class="text-[10px] font-semibold tracking-tight">Storico</span>
     </button>
-    <button onclick="switchTab('stats')" id="nav-stats" class="flex flex-col items-center text-zinc-500 text-xs font-medium">
-      <span class="text-xl">📈</span><span>1RM</span>
+    <button onclick="switchTab('stats')" id="nav-stats" class="flex flex-col items-center text-zinc-500 transition">
+      <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" />
+      </svg>
+      <span class="text-[10px] font-semibold tracking-tight">Progressi</span>
     </button>
   </nav>
 
   <script>
-  let apiKey = localStorage.getItem("gym_api_key") || "";
-  let catalog = {};
-  let selectedExercise = "";
-  let chartInstance = null;
+    let apiKey = localStorage.getItem("gym_api_key") || "";
+    let catalog = {};
+    let selectedExercise = "";
+    let chartInstance = null;
+    let currentMetric = "1rm";
+    let currentProgressionData = [];
 
-  async function api(path, options = {}) {
-    if (!apiKey) {
-      apiKey = prompt("Inserisci il PIN (API_KEY configurata nel .env):") || "";
-      localStorage.setItem("gym_api_key", apiKey);
-    }
-    options.headers = {
-      ...options.headers,
-      "Content-Type": "application/json",
-      "X-API-Key": apiKey
-    };
-    const res = await fetch(path, options);
-    if (res.status === 401) {
-      localStorage.removeItem("gym_api_key");
-      apiKey = "";
-      alert("PIN errato!");
-      throw new Error("Unauthorized");
-    }
-    if (!res.ok) {
-      const err = await res.json();
-      alert(err.detail || "Errore");
-      throw new Error(err.detail);
-    }
-    return res.json();
-  }
-
-  // Formatta la visualizzazione del set in base alla tipologia (peso, reps o tempo)
-  function formatSet(s) {
-    if (s.duration) {
-      return `${s.duration}s`;
-    }
-    if (s.weight && s.weight > 0) {
-      return `${s.weight}kg×${s.reps}`;
-    }
-    return `${s.reps} reps`;
-  }
-
-  function changePin() {
-    const p = prompt("Inserisci il nuovo PIN:", apiKey);
-    if (p !== null) {
-      apiKey = p;
-      localStorage.setItem("gym_api_key", apiKey);
-      init();
-    }
-  }
-
-  async function init() {
-    catalog = await api("/api/catalog");
-    renderSplits();
-    await refreshActiveWorkout();
-  }
-
-  function renderSplits() {
-    const grid = document.getElementById("splits-grid");
-    grid.innerHTML = "";
-    Object.keys(catalog).forEach(split => {
-      const btn = document.createElement("button");
-      btn.className = "bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 p-5 rounded-2xl font-bold text-center text-lg active:scale-95 transition";
-      btn.textContent = split;
-      btn.onclick = () => startWorkout(split);
-      grid.appendChild(btn);
-    });
-  }
-
-  async function refreshActiveWorkout() {
-    const data = await api("/api/workout/active");
-    const noView = document.getElementById("no-workout-view");
-    const actView = document.getElementById("active-workout-view");
-
-    if (!data.active) {
-      noView.classList.remove("hidden");
-      actView.classList.add("hidden");
-      return;
-    }
-
-    noView.classList.add("hidden");
-    actView.classList.remove("hidden");
-    document.getElementById("active-split-badge").textContent = `SPLIT: ${data.split.toUpperCase()}`;
-
-    const cleanText = (data.routine.text || "").replace(/<\/?[^>]+(>|$)/g, "");
-    document.getElementById("routine-reminder").textContent = cleanText;
-
-    const exContainer = document.getElementById("exercise-buttons");
-    exContainer.innerHTML = "";
-    (data.routine.exercises || []).forEach(ex => {
-      const b = document.createElement("button");
-      const isSel = selectedExercise === ex;
-      b.className = `px-3 py-2 rounded-xl text-sm font-medium border transition ${isSel ? 'bg-blue-600 border-blue-500 text-white' : 'bg-zinc-900 border-zinc-800 text-zinc-300'}`;
-      b.textContent = ex;
-      b.onclick = () => {
-        selectedExercise = ex;
-        document.getElementById("selected-ex-label").textContent = `🎯 ${ex}`;
-        refreshActiveWorkout();
+    // Client HTTP con autenticazione PIN
+    async function api(path, options = {}) {
+      if (!apiKey) {
+        apiKey = prompt("Inserisci il PIN (API_KEY configurata nel .env):") || "";
+        localStorage.setItem("gym_api_key", apiKey);
+      }
+      options.headers = {
+        ...options.headers,
+        "Content-Type": "application/json",
+        "X-API-Key": apiKey
       };
-      exContainer.appendChild(b);
-    });
+      const res = await fetch(path, options);
+      if (res.status === 401) {
+        localStorage.removeItem("gym_api_key");
+        apiKey = "";
+        alert("PIN non valido!");
+        throw new Error("Unauthorized");
+      }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "Errore di connessione" }));
+        alert(err.detail || "Errore");
+        throw new Error(err.detail);
+      }
+      return res.json();
+    }
 
-    // Raggruppa le serie registrate usando formatSet()
-    const grouped = {};
-    data.sets.forEach(s => {
-      if (!grouped[s.exercise]) grouped[s.exercise] = [];
-      grouped[s.exercise].push(formatSet(s));
-    });
-    const list = document.getElementById("current-sets-list");
-    list.innerHTML = Object.keys(grouped).length
-      ? Object.entries(grouped).map(([ex, sets]) => `<div><b class="text-zinc-200">${ex}:</b> ${sets.join(", ")}</div>`).join("")
-      : "Nessuna serie ancora registrata.";
-  }
+    // Formattazione coerente del set
+    function formatSet(s) {
+      if (s.duration) return `${s.duration}s`;
+      if (s.weight && s.weight > 0) return `${s.weight}kg × ${s.reps}`;
+      return `${s.reps} reps`;
+    }
 
-  async function startWorkout(split) {
-    await api("/api/workout/start", { method: "POST", body: JSON.stringify({ split_name: split }) });
-    selectedExercise = "";
-    await refreshActiveWorkout();
-  }
-
-  async function submitSets() {
-    if (!selectedExercise) return alert("Tocca prima un esercizio dalla lista!");
-
-    const weightInput = document.getElementById("inp-weight").value.trim();
-    const valRaw = document.getElementById("inp-reps").value.trim().toLowerCase();
-    if (!valRaw) return alert("Inserisci ripetizioni (es. 8,8,6) o tempi (es. 60s, 45s)!");
-
-    // Se il campo peso è vuoto, imposta 0.0 (corpo libero)
-    const weight = weightInput !== "" ? parseFloat(weightInput) : 0.0;
-    const parts = valRaw.split(/[\s,]+/).filter(Boolean);
-    const setsPayload = [];
-
-    for (const part of parts) {
-      // Gestione formato temporale (es. "60s", "1m", "45s")
-      if (part.includes("s") || part.includes("m")) {
-        let sec = 0;
-        const m = part.match(/(\d+)m/);
-        if (m) sec += parseInt(m[1]) * 60;
-        const s = part.match(/(\d+)s/);
-        if (s) sec += parseInt(s[1]);
-        if (sec > 0) {
-          setsPayload.push({ weight: 0.0, reps: 0, duration: sec });
-        }
-      } else {
-        // Gestione ripetizioni numeriche
-        const reps = parseInt(part);
-        if (!isNaN(reps)) {
-          setsPayload.push({ weight: isNaN(weight) ? 0.0 : weight, reps: reps, duration: null });
-        }
+    function changePin() {
+      const p = prompt("Inserisci il nuovo PIN:", apiKey);
+      if (p !== null) {
+        apiKey = p;
+        localStorage.setItem("gym_api_key", apiKey);
+        init();
       }
     }
 
-    if (!setsPayload.length) return alert("Nessun dato valido inserito.");
-
-    await api("/api/workout/sets", {
-      method: "POST",
-      body: JSON.stringify({ exercise: selectedExercise, sets: setsPayload })
-    });
-
-    document.getElementById("inp-reps").value = "";
-    await refreshActiveWorkout();
-  }
-
-  async function undoLast() {
-    if (!confirm("Rimuovere l'ultimo esercizio inserito?")) return;
-    await api("/api/workout/sets/last", { method: "DELETE" });
-    await refreshActiveWorkout();
-  }
-
-  async function endWorkout() {
-    if (!confirm("Concludere l'allenamento?")) return;
-    await api("/api/workout/end", { method: "POST" });
-    selectedExercise = "";
-    await refreshActiveWorkout();
-  }
-
-  async function loadHistory() {
-    const list = await api("/api/workouts/history");
-    const container = document.getElementById("history-list");
-    if (!list.length) {
-      container.innerHTML = "<p class='text-zinc-500 text-sm'>Nessun workout nello storico.</p>";
-      return;
+    async function init() {
+      try {
+        catalog = await api("/api/catalog");
+        renderSplits();
+        await refreshActiveWorkout();
+      } catch (e) {
+        console.error("Inizializzazione fallita:", e);
+      }
     }
-    container.innerHTML = list.map(w => {
+
+    function renderSplits() {
+      const grid = document.getElementById("splits-grid");
+      grid.innerHTML = "";
+      Object.keys(catalog).forEach(split => {
+        const btn = document.createElement("button");
+        btn.className = "bg-[#1C1C1E] active:scale-[0.97] border border-white/[0.08] p-5 rounded-3xl font-bold text-left text-base text-white transition flex flex-col justify-between h-28 shadow-sm";
+        btn.innerHTML = `
+          <div class="w-7 h-7 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-400">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+          </div>
+          <span>${split}</span>
+        `;
+        btn.onclick = () => startWorkout(split);
+        grid.appendChild(btn);
+      });
+    }
+
+    async function refreshActiveWorkout() {
+      const data = await api("/api/workout/active");
+      const noView = document.getElementById("no-workout-view");
+      const actView = document.getElementById("active-workout-view");
+
+      if (!data.active) {
+        noView.classList.remove("hidden");
+        actView.classList.add("hidden");
+        return;
+      }
+
+      noView.classList.add("hidden");
+      actView.classList.remove("hidden");
+      document.getElementById("active-split-badge").textContent = `SPLIT: ${data.split.toUpperCase()}`;
+
+      const cleanText = (data.routine.text || "").replace(/<\/?[^>]+(>|$)/g, "");
+      document.getElementById("routine-reminder").textContent = cleanText;
+
+      const exContainer = document.getElementById("exercise-buttons");
+      exContainer.innerHTML = "";
+      (data.routine.exercises || []).forEach(ex => {
+        const b = document.createElement("button");
+        const isSel = selectedExercise === ex;
+        b.className = `px-3.5 py-2 rounded-2xl text-xs font-semibold border transition active:scale-95 ${
+          isSel 
+            ? 'bg-[#0A84FF] border-[#0A84FF] text-white shadow-md shadow-blue-500/20' 
+            : 'bg-[#1C1C1E] border-white/[0.08] text-zinc-300'
+        }`;
+        b.textContent = ex;
+        b.onclick = async () => {
+          selectedExercise = ex;
+          document.getElementById("selected-ex-label").textContent = ex;
+          
+          // Recupero e display prestazione precedente
+          const banner = document.getElementById("prev-perf-banner");
+          try {
+            const prev = await api(`/api/exercises/${encodeURIComponent(ex)}/last`);
+            if (prev && prev.date) {
+              document.getElementById("prev-perf-date").textContent = prev.date;
+              document.getElementById("prev-perf-sets").textContent = prev.sets.map(formatSet).join("   •   ");
+              banner.classList.remove("hidden");
+            } else {
+              banner.classList.add("hidden");
+            }
+          } catch (e) {
+            banner.classList.add("hidden");
+          }
+
+          refreshActiveWorkout();
+        };
+        exContainer.appendChild(b);
+      });
+
+      // Serie registrate oggi raggruppate
       const grouped = {};
-      w.sets.forEach(s => {
+      data.sets.forEach(s => {
         if (!grouped[s.exercise]) grouped[s.exercise] = [];
         grouped[s.exercise].push(formatSet(s));
       });
-      const details = Object.entries(grouped).map(([ex, s]) => `<div class="text-xs text-zinc-400">• <b>${ex}:</b> ${s.join(", ")}</div>`).join("");
-      return `
-        <div class="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 space-y-2">
-          <div class="flex justify-between items-center">
-            <div>
-              <span class="font-bold text-zinc-100">${w.split}</span>
-              <span class="text-xs text-zinc-400 ml-2">${w.date}</span>
+      const list = document.getElementById("current-sets-list");
+      list.innerHTML = Object.keys(grouped).length
+        ? Object.entries(grouped).map(([ex, sets]) => `
+            <div class="bg-[#2C2C2E]/50 p-2.5 rounded-2xl border border-white/5">
+              <span class="font-bold text-zinc-200 block mb-0.5">${ex}</span>
+              <span class="text-zinc-400 font-medium">${sets.join("  •  ")}</span>
             </div>
-            <button onclick="deleteWorkout(${w.id})" class="text-xs text-red-400">🗑️ Elimina</button>
-          </div>
-          <div class="text-xs text-blue-400 font-medium">Volume: ${Math.round(w.volume)} kg (${w.sets_count} serie)</div>
-          <div class="space-y-1 pt-1 border-t border-zinc-800/60">${details}</div>
-        </div>
-      `;
-    }).join("");
-  }
-
-  async function deleteWorkout(id) {
-    if (!confirm("Eliminare definitivamente questo workout?")) return;
-    await api(`/api/workouts/${id}`, { method: "DELETE" });
-    loadHistory();
-  }
-
-  // Popola la tendina con tutti gli esercizi registrati a database
-  async function loadExerciseList() {
-    const select = document.getElementById("stat-ex-select");
-    if (!select) return;
-    try {
-      const list = await api("/api/analytics/exercises");
-      select.innerHTML = '<option value="">Seleziona un esercizio...</option>';
-      list.forEach(ex => {
-        const opt = document.createElement("option");
-        opt.value = ex;
-        opt.textContent = ex;
-        select.appendChild(opt);
-      });
-    } catch (e) {
-      select.innerHTML = '<option value="">Errore caricamento</option>';
+          `).join("")
+        : "<div class='text-zinc-500 py-1'>Nessuna serie registrata in questa sessione.</div>";
     }
-  }
 
-  // Genera il grafico prendendo l'esercizio selezionato dal menu a tendina
-  async function loadChartFromSelect() {
-    const select = document.getElementById("stat-ex-select");
-    const ex = select ? select.value : "";
-    if (!ex) return alert("Seleziona prima un esercizio dall'elenco!");
+    async function startWorkout(split) {
+      await api("/api/workout/start", { method: "POST", body: JSON.stringify({ split_name: split }) });
+      selectedExercise = "";
+      await refreshActiveWorkout();
+    }
 
-    const data = await api(`/api/analytics/${encodeURIComponent(ex)}`);
-    if (!data.length) return alert("Nessun dato registrato per questo esercizio.");
+    async function submitSets() {
+      if (!selectedExercise) return alert("Seleziona prima un esercizio!");
 
-    const ctx = document.getElementById("progressionChart").getContext("2d");
-    if (chartInstance) chartInstance.destroy();
+      const weightInput = document.getElementById("inp-weight").value.trim();
+      const valRaw = document.getElementById("inp-reps").value.trim().toLowerCase();
+      if (!valRaw) return alert("Inserisci ripetizioni (es. 8,8,6) o tempo (es. 60s)!");
 
-    chartInstance = new Chart(ctx, {
-      type: "line",
-      data: {
-        labels: data.map(d => d.date),
-        datasets: [{
-          label: `Progressione (${ex})`,
-          data: data.map(d => d["1rm"] ?? d.metric_value),
-          borderColor: "#3b82f6",
-          backgroundColor: "rgba(59, 130, 246, 0.15)",
-          fill: true,
-          tension: 0.3
-        }]
-      },
-      options: {
-        plugins: { legend: { labels: { color: "#e4e4e7" } } },
-        scales: {
-          x: { ticks: { color: "#a1a1aa" } },
-          y: { ticks: { color: "#a1a1aa" } }
+      const weight = weightInput !== "" ? parseFloat(weightInput) : 0.0;
+      const parts = valRaw.split(/[\s,]+/).filter(Boolean);
+      const setsPayload = [];
+
+      for (const part of parts) {
+        if (part.includes("s") || part.includes("m")) {
+          let sec = 0;
+          const m = part.match(/(\d+)m/);
+          if (m) sec += parseInt(m[1]) * 60;
+          const s = part.match(/(\d+)s/);
+          if (s) sec += parseInt(s[1]);
+          if (sec > 0) setsPayload.push({ weight: 0.0, reps: 0, duration: sec });
+        } else {
+          const reps = parseInt(part);
+          if (!isNaN(reps)) setsPayload.push({ weight: isNaN(weight) ? 0.0 : weight, reps: reps, duration: null });
         }
       }
-    });
-  }
 
-  function switchTab(tab) {
-    ["workout", "history", "stats"].forEach(t => {
-      document.getElementById(`tab-${t}`).classList.add("hidden");
-      document.getElementById(`nav-${t}`).classList.replace("text-blue-400", "text-zinc-500");
-    });
-    document.getElementById(`tab-${tab}`).classList.remove("hidden");
-    document.getElementById(`nav-${tab}`).classList.replace("text-zinc-500", "text-blue-400");
-    
-    if (tab === "workout") refreshActiveWorkout();
-    if (tab === "history") loadHistory();
-    if (tab === "stats") loadExerciseList();
-  }
+      if (!setsPayload.length) return alert("Nessun dato valido inserito.");
 
-  init();
-</script>
+      await api("/api/workout/sets", {
+        method: "POST",
+        body: JSON.stringify({ exercise: selectedExercise, sets: setsPayload })
+      });
+
+      document.getElementById("inp-reps").value = "";
+      await refreshActiveWorkout();
+    }
+
+    async function undoLast() {
+      if (!confirm("Annullare l'ultimo esercizio inserito?")) return;
+      await api("/api/workout/sets/last", { method: "DELETE" });
+      await refreshActiveWorkout();
+    }
+
+    async function endWorkout() {
+      if (!confirm("Concludere la sessione di allenamento?")) return;
+      await api("/api/workout/end", { method: "POST" });
+      selectedExercise = "";
+      await refreshActiveWorkout();
+    }
+
+    async function loadHistory() {
+      const list = await api("/api/workouts/history");
+      const container = document.getElementById("history-list");
+      if (!list.length) {
+        container.innerHTML = "<p class='text-zinc-500 text-xs'>Nessun workout registrato.</p>";
+        return;
+      }
+      container.innerHTML = list.map(w => {
+        const grouped = {};
+        w.sets.forEach(s => {
+          if (!grouped[s.exercise]) grouped[s.exercise] = [];
+          grouped[s.exercise].push(formatSet(s));
+        });
+        const details = Object.entries(grouped).map(([ex, s]) => `
+          <div class="text-[11px] text-zinc-400">
+            <span class="text-zinc-300 font-semibold">• ${ex}:</span> ${s.join(", ")}
+          </div>
+        `).join("");
+
+        return `
+          <div class="bg-[#1C1C1E] p-4 rounded-3xl border border-white/[0.08] space-y-3">
+            <div class="flex justify-between items-center">
+              <div>
+                <span class="font-bold text-white text-base block">${w.split}</span>
+                <span class="text-[11px] text-zinc-400">${w.date}</span>
+              </div>
+              <button onclick="deleteWorkout(${w.id})" class="text-xs text-red-400/80 hover:text-red-400 font-semibold px-2 py-1 bg-red-500/10 rounded-lg">Elimina</button>
+            </div>
+            <div class="text-xs font-semibold text-blue-400">Volume: ${Math.round(w.volume)} kg (${w.sets_count} serie)</div>
+            <div class="space-y-1.5 pt-2 border-t border-white/5">${details}</div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    async function deleteWorkout(id) {
+      if (!confirm("Eliminare definitivamente questo allenamento?")) return;
+      await api(`/api/workouts/${id}`, { method: "DELETE" });
+      loadHistory();
+    }
+
+    // Analytics: lista esercizi
+    async function loadExerciseList() {
+      const select = document.getElementById("stat-ex-select");
+      if (!select) return;
+      try {
+        const list = await api("/api/analytics/exercises");
+        select.innerHTML = '<option value="">Seleziona un esercizio...</option>';
+        list.forEach(ex => {
+          const opt = document.createElement("option");
+          opt.value = ex;
+          opt.textContent = ex;
+          select.appendChild(opt);
+        });
+      } catch (e) {
+        select.innerHTML = '<option value="">Errore caricamento</option>';
+      }
+    }
+
+    // Analytics: volume settimanale per muscolo
+    async function loadWeeklyVolume() {
+      try {
+        const data = await api("/api/analytics/weekly-volume");
+        const grid = document.getElementById("weekly-volume-grid");
+        grid.innerHTML = Object.entries(data).map(([group, sets]) => `
+          <div class="bg-[#2C2C2E]/70 border border-white/5 p-3 rounded-2xl text-center">
+            <span class="text-[10px] uppercase font-bold text-zinc-400 block tracking-wider">${group}</span>
+            <span class="text-lg font-bold ${sets > 0 ? 'text-[#0A84FF]' : 'text-zinc-600'}">${sets}</span>
+            <span class="text-[9px] text-zinc-500 block">serie</span>
+          </div>
+        `).join("");
+      } catch (e) {
+        console.error("Errore volume settimanale:", e);
+      }
+    }
+
+    // Analytics: gestione selettore metrica
+    function setChartMetric(metric) {
+      currentMetric = metric;
+      ["1rm", "volume", "max_weight"].forEach(m => {
+        const btn = document.getElementById(`btn-m-${m}`);
+        if (m === metric) {
+          btn.className = "flex-1 py-1.5 rounded-xl font-bold bg-[#2C2C2E] text-white shadow-sm transition";
+        } else {
+          btn.className = "flex-1 py-1.5 rounded-xl font-medium text-zinc-500 transition";
+        }
+      });
+      renderChart();
+    }
+
+    async function loadChartFromSelect() {
+      const select = document.getElementById("stat-ex-select");
+      const ex = select ? select.value : "";
+      if (!ex) return alert("Seleziona prima un esercizio!");
+
+      currentProgressionData = await api(`/api/analytics/${encodeURIComponent(ex)}`);
+      if (!currentProgressionData.length) return alert("Nessun dato registrato per questo esercizio.");
+      renderChart();
+    }
+
+    function renderChart() {
+      if (!currentProgressionData.length) return;
+      const select = document.getElementById("stat-ex-select");
+      const ex = select.value;
+      const ctx = document.getElementById("progressionChart").getContext("2d");
+      if (chartInstance) chartInstance.destroy();
+
+      const labelsMap = {
+        "1rm": "1RM Stimato (kg)",
+        "volume": "Volume Totale (kg)",
+        "max_weight": "Carico Massimo (kg)"
+      };
+
+      chartInstance = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: currentProgressionData.map(d => d.date),
+          datasets: [{
+            label: `${ex} - ${labelsMap[currentMetric]}`,
+            data: currentProgressionData.map(d => d[currentMetric]),
+            borderColor: "#0A84FF",
+            backgroundColor: "rgba(10, 132, 255, 0.12)",
+            borderWidth: 2.5,
+            pointBackgroundColor: "#0A84FF",
+            pointRadius: 3,
+            fill: true,
+            tension: 0.35
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: "#E5E5EA", font: { size: 11, weight: 600 } } }
+          },
+          scales: {
+            x: { 
+              grid: { color: "rgba(255, 255, 255, 0.05)" },
+              ticks: { color: "#8E8E93", font: { size: 10 } }
+            },
+            y: { 
+              grid: { color: "rgba(255, 255, 255, 0.05)" },
+              ticks: { color: "#8E8E93", font: { size: 10 } }
+            }
+          }
+        }
+      });
+    }
+
+    // Gestione Tab
+    function switchTab(tab) {
+      ["workout", "history", "stats"].forEach(t => {
+        document.getElementById(`tab-${t}`).classList.add("hidden");
+        const navBtn = document.getElementById(`nav-${t}`);
+        navBtn.classList.remove("text-[#0A84FF]");
+        navBtn.classList.add("text-zinc-500");
+      });
+
+      document.getElementById(`tab-${tab}`).classList.remove("hidden");
+      const activeNavBtn = document.getElementById(`nav-${tab}`);
+      activeNavBtn.classList.remove("text-zinc-500");
+      activeNavBtn.classList.add("text-[#0A84FF]");
+
+      if (tab === "workout") refreshActiveWorkout();
+      if (tab === "history") loadHistory();
+      if (tab === "stats") {
+        loadExerciseList();
+        loadWeeklyVolume();
+      }
+    }
+
+    // Registrazione Service Worker per supporto offline
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/static/sw.js").catch(err => {
+          console.warn("ServiceWorker non attivo (richiede HTTPS):", err);
+        });
+      });
+    }
+
+    init();
+  </script>
 </body>
 </html>

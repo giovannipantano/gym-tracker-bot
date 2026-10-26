@@ -205,7 +205,7 @@ def delete_workout(workout_id: int) -> bool:
 
 
 def get_exercise_progression(exercise_name: str):
-    """Calcola la progressione esatta senza collisioni con esercizi simili."""
+    """Restituisce data, 1RM stimato, volume totale e peso massimo sollevato."""
     with sqlite3.connect(DATABASE_PATH) as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -217,10 +217,9 @@ def get_exercise_progression(exercise_name: str):
                         WHEN s.weight > 0 THEN ROUND(s.weight * (1.0 + s.reps / 30.0), 1)
                         ELSE s.reps
                     END
-                ) as metric_value,
-                MAX(s.weight) as max_weight,
-                MAX(s.reps) as max_reps,
-                MAX(s.duration_seconds) as max_duration
+                ) as max_1rm,
+                ROUND(SUM(s.weight * s.reps), 1) as total_volume,
+                MAX(s.weight) as max_weight
             FROM sets s
             JOIN workouts w ON s.workout_id = w.id
             WHERE LOWER(TRIM(s.exercise_name)) = LOWER(TRIM(?))
@@ -228,6 +227,31 @@ def get_exercise_progression(exercise_name: str):
             ORDER BY w.start_time ASC
         """, (exercise_name.strip(),))
         return cursor.fetchall()
+
+def get_weekly_muscle_volume(exercise_map: dict) -> dict[str, int]:
+    """Conta il numero di serie completate negli ultimi 7 giorni per distretto muscolare."""
+    with sqlite3.connect(DATABASE_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT s.exercise_name, COUNT(s.id)
+            FROM sets s
+            JOIN workouts w ON s.workout_id = w.id
+            WHERE w.start_time >= datetime('now', '-7 days')
+              AND w.is_active = 0
+            GROUP BY s.exercise_name
+        """)
+        rows = cursor.fetchall()
+        
+        summary = {"Petto": 0, "Dorso": 0, "Gambe": 0, "Spalle": 0, "Braccia": 0, "Addome": 0}
+        for ex_name, count in rows:
+            matched = "Altro"
+            name_lower = ex_name.strip().lower()
+            for pattern, group in exercise_map.items():
+                if pattern in name_lower:
+                    matched = group
+                    break
+            summary[matched] = summary.get(matched, 0) + count
+        return summary
 
 
 def get_distinct_logged_exercises() -> list[str]:
@@ -251,3 +275,35 @@ def get_distinct_logged_exercises() -> list[str]:
             exercises.add(row[0].strip())
             
     return sorted(list(exercises), key=str.casefold)
+
+def get_last_exercise_performance(exercise_name: str) -> dict | None:
+    """Restituisce le serie dell'ultimo workout completato in cui è presente questo esercizio."""
+    with sqlite3.connect(DATABASE_PATH) as conn:
+        cursor = conn.cursor()
+        # Trova l'ultimo workout terminato (is_active = 0) contenente l'esercizio
+        cursor.execute("""
+            SELECT s.workout_id, w.start_time
+            FROM sets s
+            JOIN workouts w ON s.workout_id = w.id
+            WHERE LOWER(TRIM(s.exercise_name)) = LOWER(TRIM(?))
+              AND w.is_active = 0
+            ORDER BY w.start_time DESC, s.id DESC
+            LIMIT 1
+        """, (exercise_name.strip(),))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        
+        last_w_id, start_time = row
+        cursor.execute("""
+            SELECT weight, reps, duration_seconds
+            FROM sets
+            WHERE workout_id = ? AND LOWER(TRIM(exercise_name)) = LOWER(TRIM(?))
+            ORDER BY set_order ASC
+        """, (last_w_id, exercise_name.strip()))
+        sets_data = cursor.fetchall()
+        
+        return {
+            "date": start_time[:10],
+            "sets": [{"weight": s[0], "reps": s[1], "duration": s[2]} for s in sets_data]
+        }

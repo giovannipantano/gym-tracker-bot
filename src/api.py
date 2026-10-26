@@ -5,7 +5,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from src.config import API_KEY
-from src.catalog import WORKOUT_ROUTINES
+from src.catalog import WORKOUT_ROUTINES, EXERCISE_MUSCLE_MAP
 from src.database import (
     get_active_workout,
     start_new_workout,
@@ -17,7 +17,9 @@ from src.database import (
     delete_last_exercise_sets,
     delete_workout,
     get_exercise_progression,
-    get_distinct_logged_exercises
+    get_distinct_logged_exercises,
+    get_last_exercise_performance,
+    get_weekly_muscle_volume
 )
 
 app = FastAPI(title="Gym Tracker API")
@@ -126,11 +128,26 @@ def api_delete_workout(workout_id: int):
 def api_distinct_exercises():
     return get_distinct_logged_exercises()
 
-# 2. ROTTA DINAMICA: valuta il nome dell'esercizio
+# Volume settimanale per distretto muscolare
+@app.get("/api/analytics/weekly-volume", dependencies=[Depends(verify_key)])
+def api_weekly_volume():
+    return get_weekly_muscle_volume(EXERCISE_MUSCLE_MAP)
+
+# Dati completi per il grafico (1RM, Volume, Max Weight)
 @app.get("/api/analytics/{exercise}", dependencies=[Depends(verify_key)])
 def api_progression(exercise: str):
     data = get_exercise_progression(exercise)
-    return [{"date": d[0][:10], "1rm": round(d[1], 1)} for d in data]
+    return [{
+        "date": d[0][:10],
+        "1rm": round(d[1], 1) if d[1] is not None else 0,
+        "volume": round(d[2], 1) if d[2] is not None else 0,
+        "max_weight": round(d[3], 1) if d[3] is not None else 0
+    } for d in data]
+
+@app.get("/api/exercises/{exercise}/last", dependencies=[Depends(verify_key)])
+def api_last_exercise_performance(exercise: str):
+    data = get_last_exercise_performance(exercise)
+    return data or {"found": False}
 
 # File statici e root PWA
 app.mount("/static", StaticFiles(directory="src/web"), name="static")

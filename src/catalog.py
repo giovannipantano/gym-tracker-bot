@@ -107,3 +107,18 @@ def get_routine_text(split_name: str) -> str:
 def get_exercises_for_split(split_name: str) -> list[str]:
     routine = WORKOUT_ROUTINES.get(split_name)
     return routine["exercises"] if routine else []
+
+EXERCISE_MUSCLE_MAP = {
+    # Petto
+    "panca": "Petto", "chest": "Petto", "croci": "Petto", "dip": "Petto", "push up": "Petto",
+    # Dorso
+    "trazioni": "Dorso", "lat machine": "Dorso", "pulley": "Dorso", "rematore": "Dorso", "row": "Dorso", "stacco": "Dorso",
+    # Gambe
+    "squat": "Gambe", "leg press": "Gambe", "leg extension": "Gambe", "leg curl": "Gambe", "affondi": "Gambe", "calf": "Gambe",
+    # Spalle
+    "military": "Spalle", "shoulder": "Spalle", "lento": "Spalle", "alzate": "Spalle",
+    # Braccia
+    "curl": "Braccia", "french": "Braccia", "pushdown": "Braccia", "tricipiti": "Braccia",
+    # Core
+    "plank": "Addome", "crunch": "Addome", "leg raise": "Addome"
+}
