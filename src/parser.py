@@ -1,6 +1,6 @@
 import re
 
-def parse_set_input(text: str) -> list[dict]:
+def parse_set_data_only(text: str) -> list[dict]:
     text = text.strip().lower()
     entries = []
     
