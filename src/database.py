@@ -1,10 +1,13 @@
 import sqlite3
 from datetime import datetime
 from src.config import DATABASE_PATH
+from src.catalog import WORKOUT_ROUTINES
+
 
 def init_db():
     with sqlite3.connect(DATABASE_PATH) as conn:
         cursor = conn.cursor()
+        cursor.execute("PRAGMA foreign_keys = ON;")
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS workouts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -28,7 +31,7 @@ def init_db():
             );
         """)
         
-        # Migrazione automatica se la colonna duration_seconds manca nelle installazioni esistenti
+        # Migrazione automatica se la colonna duration_seconds manca
         cursor.execute("PRAGMA table_info(sets)")
         cols = [col[1] for col in cursor.fetchall()]
         if "duration_seconds" not in cols:
@@ -36,10 +39,11 @@ def init_db():
             
         conn.commit()
 
+
 def start_new_workout(split_name: str) -> int:
     with sqlite3.connect(DATABASE_PATH) as conn:
         cursor = conn.cursor()
-        # Chiudi eventuali sessioni rimaste appese
+        # Chiudi eventuali sessioni rimaste aperte
         cursor.execute("UPDATE workouts SET is_active = 0 WHERE is_active = 1")
         cursor.execute(
             "INSERT INTO workouts (split_name, is_active) VALUES (?, 1)", 
@@ -48,30 +52,31 @@ def start_new_workout(split_name: str) -> int:
         conn.commit()
         return cursor.lastrowid
 
+
 def get_active_workout():
     with sqlite3.connect(DATABASE_PATH) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT id, split_name, start_time FROM workouts WHERE is_active = 1")
         return cursor.fetchone()
 
+
 def end_active_workout(workout_id: int):
     with sqlite3.connect(DATABASE_PATH) as conn:
         cursor = conn.cursor()
-        now = datetime.now().isoformat()
+        # Usa lo stesso formato stringa di CURRENT_TIMESTAMP
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         cursor.execute(
             "UPDATE workouts SET is_active = 0, end_time = ? WHERE id = ?", 
             (now, workout_id)
         )
         conn.commit()
 
-def log_sets_batch(workout_id: int, exercise: str, entries: list[dict]):
+
+def log_sets_batch(workout_id: int, exercise: str, entries: list):
     """
-    entries: lista di dizionari, es:
-    [
-        {"weight": 80.0, "reps": 8, "duration": None},
-        {"weight": 0.0, "reps": 12, "duration": None},  # corpo libero
-        {"weight": 0.0, "reps": 0, "duration": 60}      # 60 secondi
-    ]
+    Supporta sia dizionari (PWA) che tuple (Telegram):
+    - Dict: {"weight": 80.0, "reps": 8, "duration": None}
+    - Tuple: (80.0, 8) oppure (0.0, 60)
     """
     with sqlite3.connect(DATABASE_PATH) as conn:
         cursor = conn.cursor()
@@ -81,23 +86,28 @@ def log_sets_batch(workout_id: int, exercise: str, entries: list[dict]):
         )
         current_count = cursor.fetchone()[0]
         
-        to_insert = [
-            (
-                workout_id, 
-                exercise, 
-                current_count + i + 1, 
-                e.get("weight", 0.0) or 0.0, 
-                e.get("reps", 0) or 0, 
-                e.get("duration", None)
-            )
-            for i, e in enumerate(entries)
-        ]
+        to_insert = []
+        for i, e in enumerate(entries):
+            if isinstance(e, dict):
+                w = e.get("weight", 0.0) or 0.0
+                r = e.get("reps", 0) or 0
+                d = e.get("duration", None)
+            elif isinstance(e, (list, tuple)):
+                w = float(e[0]) if len(e) > 0 and e[0] is not None else 0.0
+                r = int(e[1]) if len(e) > 1 and e[1] is not None else 0
+                d = int(e[2]) if len(e) > 2 else None
+            else:
+                continue
+
+            to_insert.append((workout_id, exercise, current_count + i + 1, w, r, d))
+
         cursor.executemany(
             """INSERT INTO sets (workout_id, exercise_name, set_order, weight, reps, duration_seconds) 
                VALUES (?, ?, ?, ?, ?, ?)""",
             to_insert
         )
         conn.commit()
+
 
 def get_workout_summary(workout_id: int):
     with sqlite3.connect(DATABASE_PATH) as conn:
@@ -109,6 +119,7 @@ def get_workout_summary(workout_id: int):
             GROUP BY exercise_name
         """, (workout_id,))
         return cursor.fetchall()
+
 
 def get_exercise_history(exercise_query: str):
     with sqlite3.connect(DATABASE_PATH) as conn:
@@ -122,6 +133,7 @@ def get_exercise_history(exercise_query: str):
             ORDER BY w.start_time ASC
         """, (search_term,))
         return cursor.fetchall()
+
 
 def get_recent_workouts(limit: int = 10):
     with sqlite3.connect(DATABASE_PATH) as conn:
@@ -140,6 +152,7 @@ def get_recent_workouts(limit: int = 10):
         """, (limit,))
         return cursor.fetchall()
 
+
 def get_workout_details(workout_id: int):
     with sqlite3.connect(DATABASE_PATH) as conn:
         cursor = conn.cursor()
@@ -157,16 +170,17 @@ def get_workout_details(workout_id: int):
         sets_data = cursor.fetchall()
         return meta, sets_data
 
+
 def delete_last_exercise_sets(workout_id: int) -> tuple[str, int] | None:
-    """Elimina tutte le serie dell'ultimo esercizio inserito nella sessione attiva."""
+    """Elimina in modo deterministico tutte le serie dell'ultimo esercizio inserito."""
     with sqlite3.connect(DATABASE_PATH) as conn:
         cursor = conn.cursor()
+        # Seleziona l'ultimo esercizio in base all'ID autoincrementale (evita problemi di granularità timestamp)
         cursor.execute("""
-            SELECT exercise_name, MAX(created_at)
-            FROM sets
-            WHERE workout_id = ?
-            GROUP BY exercise_name
-            ORDER BY MAX(created_at) DESC
+            SELECT exercise_name 
+            FROM sets 
+            WHERE workout_id = ? 
+            ORDER BY id DESC 
             LIMIT 1
         """, (workout_id,))
         row = cursor.fetchone()
@@ -179,8 +193,9 @@ def delete_last_exercise_sets(workout_id: int) -> tuple[str, int] | None:
         conn.commit()
         return last_ex, deleted_count
 
+
 def delete_workout(workout_id: int) -> bool:
-    """Elimina una sessione e tutte le sue serie correlate."""
+    """Elimina una sessione e tutte le relative serie collegate."""
     with sqlite3.connect(DATABASE_PATH) as conn:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM sets WHERE workout_id = ?", (workout_id,))
@@ -188,8 +203,9 @@ def delete_workout(workout_id: int) -> bool:
         conn.commit()
         return cursor.rowcount > 0
 
+
 def get_exercise_progression(exercise_name: str):
-    """Calcola la progressione esatta per l'esercizio selezionato."""
+    """Calcola la progressione esatta senza collisioni con esercizi simili."""
     with sqlite3.connect(DATABASE_PATH) as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -213,14 +229,25 @@ def get_exercise_progression(exercise_name: str):
         """, (exercise_name.strip(),))
         return cursor.fetchall()
 
+
 def get_distinct_logged_exercises() -> list[str]:
-    """Restituisce la lista ordinata di tutti gli esercizi registrati nel DB."""
+    """Restituisce tutti gli esercizi (da schede predefinite + registrati nel DB)."""
+    exercises = set()
+    
+    # 1. Carica gli esercizi dal catalogo schede
+    for split_data in WORKOUT_ROUTINES.values():
+        for ex in split_data.get("exercises", []):
+            exercises.add(ex.strip())
+            
+    # 2. Carica gli esercizi registrati a DB
     with sqlite3.connect(DATABASE_PATH) as conn:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT DISTINCT exercise_name 
             FROM sets 
             WHERE exercise_name IS NOT NULL AND TRIM(exercise_name) != ''
-            ORDER BY exercise_name COLLATE NOCASE ASC
         """)
-        return [row[0] for row in cursor.fetchall()]
+        for row in cursor.fetchall():
+            exercises.add(row[0].strip())
+            
+    return sorted(list(exercises), key=str.casefold)
