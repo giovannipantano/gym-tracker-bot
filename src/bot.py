@@ -45,7 +45,12 @@ async def main():
     await setup_bot_commands(bot)
 
     # Configura il server FastAPI sulla porta 8000
-    config = uvicorn.Config(fastapi_app, host="0.0.0.0", port=8000, log_level="info")
+    config = uvicorn.Config(
+    app=fastapi_app,
+    host="127.0.0.1",
+    port=8000,
+    log_level="info"
+    )
     server = uvicorn.Server(config)
 
     logging.info("Avvio Bot Telegram + Server PWA sulla porta 8000...")
