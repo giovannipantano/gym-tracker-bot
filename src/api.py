@@ -25,9 +25,41 @@ from src.database import (
 app = FastAPI(title="Gym Tracker API")
 
 # Protezione tramite PIN/API Key nell'header
-def verify_key(x_api_key: str = Header(default="")):
+import time
+from collections import defaultdict
+from fastapi import Request
+
+# Struttura per tracciare tentativi falliti: IP -> [timestamp, tentativi]
+FAILED_ATTEMPTS = defaultdict(lambda: {"count": 0, "blocked_until": 0})
+
+def verify_key(request: Request, x_api_key: str = Header(default="")):
+    client_ip = request.client.host if request.client else "unknown"
+    current_time = time.time()
+    ip_stats = FAILED_ATTEMPTS[client_ip]
+
+    # Controlla se l'IP è in periodo di blocco (15 minuti)
+    if current_time < ip_stats["blocked_until"]:
+        remaining = int(ip_stats["blocked_until"] - current_time)
+        raise HTTPException(
+            status_code=429, 
+            detail=f"Troppi tentativi errati. Riprova tra {remaining} secondi."
+        )
+
     if x_api_key != API_KEY:
+        ip_stats["count"] += 1
+        # Dopo 5 tentativi errati scatta il blocco per 900 secondi (15 minuti)
+        if ip_stats["count"] >= 5:
+            ip_stats["blocked_until"] = current_time + 900
+            ip_stats["count"] = 0
+            raise HTTPException(
+                status_code=429, 
+                detail="Tentativi massimi superati. IP temporaneamente bloccato."
+            )
         raise HTTPException(status_code=401, detail="PIN/API Key non valida")
+
+    # Reset dei contatori in caso di accesso autorizzato
+    if client_ip in FAILED_ATTEMPTS:
+        del FAILED_ATTEMPTS[client_ip]
 
 # Modelli per i payload delle API
 class StartWorkoutReq(BaseModel):
