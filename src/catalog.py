@@ -1,124 +1,110 @@
-WORKOUT_ROUTINES = {
-    "Push": {
-        "text": (
-            "📋 <b>Scheda PUSH</b>\n\n"
-            "• Panca: 6 rep + 2 back off\n"
-            "• Alzate laterali manubrio: 2xmax\n"
-            "• Panca 70: 8-10 rep + 2 back off\n"
-            "• Alzate laterali cavo: 2xmax\n"
-            "• Croci cavi: 3xmax\n"
-            "• Push down: 2xmax"
-        ),
-        "exercises": [
-            "Panca",
-            "Alzate laterali manubrio",
-            "Panca 70",
-            "Alzate laterali cavo",
-            "Croci cavi",
-            "Push down"
-        ]
-    },
-    "Pull": {
-        "text": (
-            "📋 <b>Scheda PULL</b>\n\n"
-            "• Trazioni zavorrate: 5 rep + 2 back off\n"
-            "• Pulley: 3xmax\n"
-            "• Rematore manubrio: 2xmax\n"
-            "• Del posteriori cavo: 3xmax\n"
-            "• Curl ez: 6-8 rep + 2 back off\n"
-            "• Curl martello: 2xmax"
-        ),
-        "exercises": [
-            "Trazioni zavorrate",
-            "Pulley",
-            "Rematore manubrio",
-            "Del posteriori cavo",
-            "Curl ez",
-            "Curl martello"
-        ]
-    },
-    "Legs": {
-        "text": (
-            "📋 <b>Scheda LEGS</b>\n\n"
-            "• Squat: 6 rep + 2 back off\n"
-            "• Leg extension: 3xmax\n"
-            "• Stacco rumeno: 8 rep + 2 back off\n"
-            "• Leg curl: 3xmax\n"
-            "• Calf: 2xmax\n"
-            "• Copenhagen plank"
-        ),
-        "exercises": [
-            "Squat",
-            "Leg extension",
-            "Stacco rumeno",
-            "Leg curl",
-            "Calf",
-            "Copenhagen plank"
-        ]
-    },
-    "Upper": {
-        "text": (
-            "📋 <b>Scheda UPPER</b>\n\n"
-            "• Dips zavorrati: 6-8 rep + 2 back off\n"
-            "• Rematore bilanciere: 6-8 rep + 2 back off\n"
-            "• Croci panca inclinata: 3xmax\n"
-            "• Trazioni: 3xmax\n"
-            "• Alzate laterali: 2xmax\n"
-            "• Del posteriori: 2xmax\n"
-            "• Tricipiti overhead: 2xmax\n"
-            "• Curl su panca inclinata: 3xmax"
-        ),
-        "exercises": [
-            "Dips zavorrati",
-            "Rematore bilanciere",
-            "Croci panca inclinata",
-            "Trazioni",
-            "Alzate laterali",
-            "Del posteriori",
-            "Tricipiti overhead",
-            "Curl su panca inclinata"
-        ]
-    },
-    "Lower": {
-        "text": (
-            "📋 <b>Scheda LOWER</b>\n\n"
-            "• Leg press: 10 rep + 2 back off\n"
-            "• Affondi bulgari: 2xmax\n"
-            "• Hip thrust: 3xmax\n"
-            "• Iper estensioni: 2xmax\n"
-            "• Calf: 2xmax\n"
-            "• Copenhagen plank"
-        ),
-        "exercises": [
-            "Leg press",
-            "Affondi bulgari",
-            "Hip thrust",
-            "Iper estensioni",
-            "Calf",
-            "Copenhagen plank"
-        ]
-    }
-}
+"""Cataloghi statici: gruppi muscolari, scheda di esempio e utilità sui nomi degli esercizi.
 
-def get_routine_text(split_name: str) -> str:
-    routine = WORKOUT_ROUTINES.get(split_name)
-    return routine["text"] if routine else f"📋 <b>Scheda {split_name}</b>"
+Le schede degli utenti NON sono più qui: vivono nel database (src/routines.py).
+"""
 
-def get_exercises_for_split(split_name: str) -> list[str]:
-    routine = WORKOUT_ROUTINES.get(split_name)
-    return routine["exercises"] if routine else []
+MUSCLE_GROUPS = ["Petto", "Dorso", "Gambe", "Spalle", "Braccia", "Addome", "Altro"]
 
+# Usata per proporre un gruppo muscolare quando l'utente non lo specifica.
+# La corrispondenza usa il pattern più lungo contenuto nel nome dell'esercizio,
+# quindi le voci specifiche ("curl su panca") vincono su quelle generiche ("panca", "curl").
 EXERCISE_MUSCLE_MAP = {
     # Petto
     "panca": "Petto", "chest": "Petto", "croci": "Petto", "dip": "Petto", "push up": "Petto",
     # Dorso
-    "trazioni": "Dorso", "lat machine": "Dorso", "pulley": "Dorso", "rematore": "Dorso", "row": "Dorso", "stacco": "Dorso",
+    "trazioni": "Dorso", "lat machine": "Dorso", "pulley": "Dorso", "rematore": "Dorso", "row": "Dorso",
+    "stacco": "Dorso", "iper": "Dorso",
     # Gambe
-    "squat": "Gambe", "leg press": "Gambe", "leg extension": "Gambe", "leg curl": "Gambe", "affondi": "Gambe", "calf": "Gambe",
+    "squat": "Gambe", "leg press": "Gambe", "leg extension": "Gambe", "leg curl": "Gambe", "affondi": "Gambe",
+    "calf": "Gambe", "hip thrust": "Gambe",
     # Spalle
-    "military": "Spalle", "shoulder": "Spalle", "lento": "Spalle", "alzate": "Spalle",
+    "military": "Spalle", "shoulder": "Spalle", "lento": "Spalle", "alzate": "Spalle", "del posteriori": "Spalle",
     # Braccia
-    "curl": "Braccia", "french": "Braccia", "pushdown": "Braccia", "tricipiti": "Braccia",
+    "curl": "Braccia", "curl su panca": "Braccia", "french": "Braccia", "pushdown": "Braccia",
+    "push down": "Braccia", "tricipiti": "Braccia",
     # Core
     "plank": "Addome", "crunch": "Addome", "leg raise": "Addome"
 }
+
+
+def guess_muscle_group(exercise_name: str) -> str:
+    """Gruppo muscolare del pattern più lungo contenuto nel nome ('Altro' se nessuno)."""
+    name = exercise_name.strip().lower()
+    matches = [pattern for pattern in EXERCISE_MUSCLE_MAP if pattern in name]
+    if not matches:
+        return "Altro"
+    return EXERCISE_MUSCLE_MAP[max(matches, key=len)]
+
+
+def canonical_exercise_name(name: str, known_names=()) -> str:
+    """
+    Normalizza il nome di un esercizio: spazi ripuliti e, se coincide (senza distinzione tra
+    maiuscole/minuscole) con uno dei nomi noti (gli esercizi delle schede dell'utente),
+    usa quell'ortografia. Evita che "panca" e "Panca" diventino esercizi diversi.
+    """
+    cleaned = " ".join(name.split())
+    key = cleaned.casefold()
+    for known in known_names:
+        if known.casefold() == key:
+            return known
+    return cleaned[:1].upper() + cleaned[1:]
+
+
+# Scheda di esempio (Push / Pull / Legs / Upper / Lower) che ogni utente può importare
+# con un tocco e poi modificare. (esercizio, nota)
+_TEMPLATE_RAW = {
+    "Push": [
+        ("Panca", "6 rep + 2 back off"),
+        ("Alzate laterali manubrio", "2xmax"),
+        ("Panca 70", "8-10 rep + 2 back off"),
+        ("Alzate laterali cavo", "2xmax"),
+        ("Croci cavi", "3xmax"),
+        ("Push down", "2xmax"),
+    ],
+    "Pull": [
+        ("Trazioni zavorrate", "5 rep + 2 back off"),
+        ("Pulley", "3xmax"),
+        ("Rematore manubrio", "2xmax"),
+        ("Del posteriori cavo", "3xmax"),
+        ("Curl ez", "6-8 rep + 2 back off"),
+        ("Curl martello", "2xmax"),
+    ],
+    "Legs": [
+        ("Squat", "6 rep + 2 back off"),
+        ("Leg extension", "3xmax"),
+        ("Stacco rumeno", "8 rep + 2 back off"),
+        ("Leg curl", "3xmax"),
+        ("Calf", "2xmax"),
+        ("Copenhagen plank", ""),
+    ],
+    "Upper": [
+        ("Dips zavorrati", "6-8 rep + 2 back off"),
+        ("Rematore bilanciere", "6-8 rep + 2 back off"),
+        ("Croci panca inclinata", "3xmax"),
+        ("Trazioni", "3xmax"),
+        ("Alzate laterali", "2xmax"),
+        ("Del posteriori", "2xmax"),
+        ("Tricipiti overhead", "2xmax"),
+        ("Curl su panca inclinata", "3xmax"),
+    ],
+    "Lower": [
+        ("Leg press", "10 rep + 2 back off"),
+        ("Affondi bulgari", "2xmax"),
+        ("Hip thrust", "3xmax"),
+        ("Iper estensioni", "2xmax"),
+        ("Calf", "2xmax"),
+        ("Copenhagen plank", ""),
+    ],
+}
+
+DEFAULT_TEMPLATE = [
+    {
+        "name": routine_name,
+        "notes": "",
+        "exercises": [
+            {"name": ex, "muscle_group": guess_muscle_group(ex), "note": note}
+            for ex, note in exercises
+        ],
+    }
+    for routine_name, exercises in _TEMPLATE_RAW.items()
+]

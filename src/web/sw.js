@@ -1,4 +1,4 @@
-const CACHE_NAME = "gym-tracker-cache-v1";
+const CACHE_NAME = "gym-tracker-cache-v3";
 const STATIC_ASSETS = [
   "/",
   "/static/manifest.json",
@@ -6,12 +6,14 @@ const STATIC_ASSETS = [
   "https://cdn.jsdelivr.net/npm/chart.js"
 ];
 
-// Fase di installazione: memorizza nella cache locale shell e dipendenze
+// Fase di installazione: memorizza nella cache locale shell e dipendenze.
+// Ogni risorsa è aggiunta separatamente: se una CDN non risponde, l'installazione
+// del Service Worker non fallisce per intero (come accadeva con cache.addAll).
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
-    })
+    caches.open(CACHE_NAME).then((cache) =>
+      Promise.allSettled(STATIC_ASSETS.map((url) => cache.add(url)))
+    )
   );
   self.skipWaiting();
 });
@@ -34,10 +36,15 @@ self.addEventListener("activate", (event) => {
 
 // Intercettazione richieste di rete
 self.addEventListener("fetch", (event) => {
+  // Solo richieste GET: le altre non sono memorizzabili in cache
+  if (event.request.method !== "GET") {
+    return;
+  }
+
   const requestUrl = new URL(event.request.url);
 
   // Le chiamate API verso il database devono sempre transitare sulla rete
-  if (requestUrl.pathname.startsWith("/api/")) {
+  if (requestUrl.pathname.startsWith("/api/") || requestUrl.pathname === "/unsubscribe") {
     return;
   }
 

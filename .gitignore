@@ -9,7 +9,13 @@ ENV/
 
 # Data & Database
 *.db
+*.db-wal
+*.db-shm
 *.sqlite3
+*.log
+
+# Test
+.pytest_cache/
 
 # IDE & OS
 .vscode/

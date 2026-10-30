@@ -1,229 +1,95 @@
-# 🏋️‍♂️ Gym Tracker & Analytics (Telegram Bot + iOS PWA)
+# Gym Tracker
 
-Piattaforma self-hosted per il tracciamento e l'analisi degli allenamenti contro resistenza, accessibile sia come **Progressive Web App (PWA)** mobile-first ottimizzata per iOS Safari, sia tramite **Bot Telegram** interattivo. Tutti i dati convergono in tempo reale su un unico database SQLite relazionale operante in modalità WAL.
+App web (PWA, installabile su iPhone) per registrare gli allenamenti. Ogni persona ha il proprio account
+(email + password), le proprie schede e i propri dati. Backend FastAPI + SQLite.
 
----
+Funzioni: account con verifica email e recupero password · schede personali (editor, import CSV, schede di esempio)
+· registrazione serie (peso × ripetizioni o secondi) · storico · progressi (1RM stimato, volume, carico massimo)
+· volume settimanale per gruppo muscolare · esportazione ed eliminazione dell'account · email di novità solo con consenso.
 
-## 🏗️ Architettura del Sistema
+## Avvio
 
-```text
-[ Client iOS (Safari PWA) ]           [ Telegram App ]
-            │                                │
-            ▼ (HTTPS / TLS 1.3)              ▼ (HTTPS Polling)
-   [ Caddy Reverse Proxy ]             [ Telegram Servers ]
-    (Porte 80/443 + HSTS)                    │
-            │                                │
-            ▼ (127.0.0.1:8000)               │
-    [ FastAPI Backend ] ◄────────────────────┘
-            │          (aiogram v3 Polling)
-            ▼
- [ SQLite Database (WAL Mode) ] ──(Cron 03:30)──► [ Backup DB Telegram ]
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env      # poi compila SECRET_KEY e BASE_URL
+python -m src.main        # http://127.0.0.1:8000
 ```
 
----
+L'app ascolta solo su `127.0.0.1`: in produzione mettila dietro un reverse proxy HTTPS (es. Caddy), che
+inoltra `X-Forwarded-For`. Senza HTTPS la PWA non si installa e il Service Worker non parte.
 
-## ✨ Funzionalità
-
-### 📱 Progressive Web App (Apple Design System)
-* **Interfaccia Nativa iOS:** Palette Apple Dark (`#000000`), bordi continui, sfocature *frosted glass* (`backdrop-blur-2xl`), controlli a segmenti e supporto completo alle *Safe Areas* (Dynamic Island e Home Bar).
-* **Supporto Offline (Service Worker):** Caching locale degli asset statici (`sw.js`) e manifest PWA standalone per avvio immediato a schermo intero anche in palestre prive di connettività.
-* **Direct Progressive Overload:** Al tocco di un esercizio durante una sessione attiva, compare immediatamente il riepilogo delle serie e dei carichi eseguiti nell'ultima sessione completata.
-* **Logging Multimodale:**
-  * Sovraccarichi classici (es. `80kg 8, 8, 6` o `80 8 8 6`).
-  * Esercizi a corpo libero a peso zero (es. `12, 10, 8`).
-  * Esercizi a tempo / isometrici (es. `60s, 45s` o `1m, 30s`).
-
-### 📊 Analytics & Metriche Avanzate
-* **Progressione 1RM (Formula di Epley):** Calcolo dinamico del massimale stimato con matching esatto del nome esercizio per evitare collisioni tra varianti simili (es. *Panca Piana* vs *Panca Inclinata*).
-* **Switch Metriche Interattivo:** Selettore a segmenti integrato con Chart.js per passare da **1RM Stimato**, a **Volume Totale (kg)** fino al **Carico Massimo (kg)** sollevato.
-* **Volume Settimanale per Gruppo Muscolare:** Aggregazione automatica delle serie allenanti completate negli ultimi 7 giorni raggruppate per distretto (Petto, Dorso, Gambe, Spalle, Braccia, Addome).
-* **Elenco Dinamico Esercizi:** Menu a tendina generato unendo gli esercizi definiti a catalogo con le serie effettivamente registrate nel database.
-
-### 🤖 Bot Telegram (`aiogram v3`)
-* Inserimento rapido delle serie tramite messaggi naturali (es. `Panca Piana: 80 8 8 6`).
-* Visualizzazione istantanea del riepilogo a fine sessione.
-* Controllo accessi rigoroso basato su whitelist di `user_id`.
-
-### 🛡️ Sicurezza & Infrastruttura
-* **Reverse Proxy Caddy:** Gestione e rinnovo automatico dei certificati TLS/SSL Let's Encrypt tramite DuckDNS con header HSTS (`Strict-Transport-Security`), `X-Frame-Options` e `X-Content-Type-Options`.
-* **Isolamento Applicativo:** Uvicorn vincolato esclusivamente all'interfaccia di loopback locale `127.0.0.1:8000`.
-* **Protezione Anti Brute-Force:** Rate-limiting applicativo in memoria su FastAPI con blocco temporaneo (15 minuti) dopo 5 tentativi consecutivi di PIN errato.
-* **Intrusion Prevention:** Daemon Fail2ban a protezione del servizio SSH su Linux.
-* **Affidabilità Database:** Concorrenza senza lock grazie a `PRAGMA journal_mode = WAL;` e vincoli referenziali `PRAGMA foreign_keys = ON;`.
-* **Disaster Recovery Automatico:** Dump atomico a caldo SQLite (`.backup`) eseguito ogni notte alle 03:30 e recapitato come documento via Bot API su Telegram.
-
----
-
-## 🛠️ Stack Tecnologico
-
-* **Linguaggio & Runtime:** Python 3.12
-* **Framework Web & API:** FastAPI, Uvicorn, Pydantic v2
-* **Framework Bot:** aiogram v3
-* **Database:** SQLite3 (WAL mode)
-* **Frontend:** HTML5, TailwindCSS, Chart.js, Service Worker API
-* **Web Server & SSL:** Caddy Server, Let's Encrypt, DuckDNS
-* **Infrastruttura:** Oracle Cloud Infrastructure (Ubuntu Linux 24.04), systemd, Fail2ban
-
----
-
-## 📁 Struttura della Repository
-
-```text
-gym-tracker-bot/
-├── scripts/
-│   └── backup_db.py         # Script per dump atomico e upload DB su Telegram
-├── src/
-│   ├── handlers/
-│   │   ├── analytics.py     # Handler Telegram per comandi analitici
-│   │   └── workout.py       # Handler Telegram per gestione workout attivo
-│   ├── web/
-│   │   ├── index.html       # UI iOS PWA (Apple Design System)
-│   │   ├── manifest.json    # Metadati PWA per installazione standalone
-│   │   └── sw.js            # Service Worker per caching e supporto offline
-│   ├── api.py               # API REST FastAPI protette da PIN e rate limiter
-│   ├── bot.py               # Entrypoint: avvio simultaneo Bot e Uvicorn
-│   ├── catalog.py           # Definizioni routine e mappatura gruppi muscolari
-│   ├── config.py            # Caricamento centralizzato variabili d'ambiente
-│   ├── database.py          # Schema SQL, migrazioni e query analitiche
-│   └── parser.py            # Parser stringhe serie, carichi, reps e tempi
-├── .env.example             # Template variabili d'ambiente
-├── requirements.txt         # Dipendenze Python
-├── workout_tracker.db       # Database SQLite di produzione
-└── README.md
-```
-
----
-
-## ⚙️ Variabili d'Ambiente
-
-Crea un file `.env` nella radice del progetto:
+Esempio di servizio systemd:
 
 ```ini
-TELEGRAM_BOT_TOKEN="123456789:ABCdefGHIjklMNOpqrSTUvwxYZ"
-ALLOWED_USER_IDS="12345678"
-DATABASE_PATH="workout_tracker.db"
-API_KEY="il_tuo_pin_segreto"
-```
-
----
-
-## 🚀 Setup & Esecuzione Locale
-
-1. **Clona la repository e crea l'ambiente virtuale:**
-   ```bash
-   git clone [https://github.com/tuo-username/gym-tracker-bot.git](https://github.com/tuo-username/gym-tracker-bot.git)
-   cd gym-tracker-bot
-   python3 -m venv .venv
-   source .venv/bin/activate
-   ```
-
-2. **Installa le dipendenze:**
-   ```bash
-   pip install --upgrade pip
-   pip install -r requirements.txt
-   ```
-
-3. **Avvia i servizi:**
-   ```bash
-   python3 -m src.bot
-   ```
-   * Il Bot Telegram entrerà in modalità polling.
-   * La PWA e le API saranno raggiungibili su `http://127.0.0.1:8000`.
-
----
-
-## 🌐 Deploy su VPS (Oracle Cloud)
-
-### 1. Servizio Systemd (`gymbot.service`)
-Crea `/etc/systemd/system/gymbot.service`:
-
-```ini
-[Unit]
-Description=Gym Tracker Telegram Bot & FastAPI Server
-After=network.target
-
 [Service]
-Type=simple
-User=ubuntu
-WorkingDirectory=/home/ubuntu/gym-tracker-bot
-ExecStart=/home/ubuntu/gym-tracker-bot/.venv/bin/python3 -m src.bot
+WorkingDirectory=/home/utente/gym-tracker-bot
+ExecStart=/home/utente/gym-tracker-bot/.venv/bin/python -m src.main
 Restart=always
-RestartSec=5
-Environment=PYTHONUNBUFFERED=1
-
-[Install]
-WantedBy=multi-user.target
 ```
 
-Abilita e avvia:
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable gymbot
-sudo systemctl start gymbot
-```
+## Configurazione
 
-### 2. Configurazione Reverse Proxy Caddy
-Installa Caddy e modifica `/etc/caddy/Caddyfile`:
+Tutte le variabili sono documentate in `.env.example`. Le uniche obbligatorie sono `SECRET_KEY` e (in produzione) `BASE_URL`.
+Le vecchie variabili `BOT_TOKEN`, `ALLOWED_USER_IDS` e `API_KEY` non servono più: Telegram è stato rimosso.
 
-```text
-tuonome.duckdns.org {
-    reverse_proxy 127.0.0.1:8000
+### Email (SMTP)
+Serve un provider SMTP (Brevo, Mailgun, Gmail con "password per app", ecc.): compila `SMTP_*` nel `.env`.
+Senza SMTP le email non partono ma il loro testo (con i link) compare nel log, utile in sviluppo.
+Con `REQUIRE_EMAIL_VERIFICATION=true` l'SMTP è obbligatorio.
 
-    header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-        X-Frame-Options "DENY"
-        X-Content-Type-Options "nosniff"
-        Referrer-Policy "strict-origin-when-cross-origin"
-    }
+## Novità via email
 
-    log {
-        output file /var/log/caddy/gymbot_access.log
-    }
-}
-```
-
-Riavvia Caddy:
-```bash
-sudo systemctl restart caddy
-```
-
-### 3. Sicurezza Firewall e Fail2ban
-Apri le porte `80` e `443` a livello iptables (oltre a impostare le Ingress Rules sulla VCN di Oracle Cloud):
-```bash
-sudo iptables -I INPUT 1 -p tcp --dport 80 -j ACCEPT
-sudo iptables -I INPUT 1 -p tcp --dport 443 -j ACCEPT
-sudo netfilter-persistent save
-```
-
-Proteggi la porta SSH da attacchi a forza bruta:
-```bash
-sudo apt install -y fail2ban
-sudo systemctl enable --now fail2ban
-```
-
----
-
-## 📦 Backup Notturno su Telegram
-
-Lo script `scripts/backup_db.py` genera una copia atomica a caldo del database SQLite tramite `src_conn.backup(dst_conn)` e la invia direttamente come allegato documentale al primo `user_id` specificato in `ALLOWED_USER_IDS`.
-
-Pianifica il Cron job per le **03:30** ogni notte:
+Ricevono le novità solo gli utenti con **email verificata** e **consenso** (casella spuntata in registrazione o nell'Account).
+Ogni email contiene il link di disiscrizione e le intestazioni `List-Unsubscribe`.
 
 ```bash
-crontab -e
+echo "Ciao! Ecco cosa c'è di nuovo..." > novita.txt
+python3 scripts/send_newsletter.py --subject "Novità" --body-file novita.txt --dry-run            # elenca i destinatari
+python3 scripts/send_newsletter.py --subject "Novità" --body-file novita.txt --test-to tu@esempio.it  # prova su di te
+python3 scripts/send_newsletter.py --subject "Novità" --body-file novita.txt                      # invio reale (chiede conferma)
 ```
 
-Aggiungi la riga:
-```text
-30 3 * * * /home/ubuntu/gym-tracker-bot/.venv/bin/python3 /home/ubuntu/gym-tracker-bot/scripts/backup_db.py >> /home/ubuntu/gym-tracker-bot/backup.log 2>&1
+Le email di servizio (verifica, reset password) non sono "novità" e non richiedono consenso.
+
+## Dati della versione a utente singolo
+
+Dopo l'aggiornamento i vecchi allenamenti (senza proprietario) sono invisibili a tutti. Per riaverli:
+registrati dall'app con la tua email, poi
+
+```bash
+python3 scripts/claim_legacy_data.py --email tu@esempio.it --seed-template
 ```
 
----
+`--seed-template` aggiunge anche le schede Push/Pull/Legs/Upper/Lower di esempio.
 
-## 📲 Installazione PWA su iPhone
+## Backup
 
-1. Apri **Safari** su iPhone e collegati all'indirizzo `https://tuonome.duckdns.org`.
-2. Inserisci il PIN configurato nella variabile `API_KEY`.
-3. Tocca il tasto **Condividi** di iOS (il quadrato con la freccia verso l'alto).
-4. Scorri verso il basso e seleziona **Aggiungi alla schermata Home**.
-5. Conferma con **Aggiungi**: l'applicazione verrà installata come PWA nativa, funzionante a schermo intero e con cache offline persistente.
+```bash
+python3 scripts/backup_db.py     # es. da cron ogni notte
+```
+
+Crea copie verificate in `BACKUP_DIR` (ultime `BACKUP_KEEP`, permessi 0700). Non vanno più su Telegram: proteggono da errori,
+**non dalla perdita del server**. Copia la cartella altrove con regolarità (rsync, rclone verso un cloud).
+
+## Privacy
+
+`src/web/privacy.html` è un **modello**: sostituisci i testi tra `[parentesi quadre]` con i tuoi dati prima di invitare altre persone.
+Non è consulenza legale. L'app permette già agli utenti di esportare i dati, eliminare l'account e revocare il consenso.
+
+## Test
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
+## Formato CSV per importare le schede
+
+```csv
+scheda,esercizio,gruppo,note
+Push,Panca,Petto,6 rep + 2 back off
+Pull,Trazioni,Dorso,3xmax
+```
+Separatore virgola o punto e virgola; `gruppo` e `note` facoltativi (il gruppo, se manca, viene dedotto dal nome).
+Una scheda con lo stesso nome viene aggiornata.

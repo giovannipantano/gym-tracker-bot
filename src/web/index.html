@@ -10,10 +10,10 @@
   <link rel="manifest" href="/static/manifest.json" />
   <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2964/2964514.png" />
   <title>Gym Tracker</title>
-  
+
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  
+
   <style>
     /* Tipografia e finiture native iOS */
     body {
@@ -23,352 +23,763 @@
       padding-top: env(safe-area-inset-top);
       padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
     }
-    .pb-safe {
-      padding-bottom: env(safe-area-inset-bottom);
+    .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+    /* body è select-none: i campi di testo devono comunque restare selezionabili/digitabili su iOS */
+    input, textarea, select { -webkit-user-select: text; user-select: text; }
+
+    /* Componenti riusati nelle schermate di accesso, editor schede e account */
+    .field {
+      width: 100%; background: #2C2C2E; border: 1px solid rgba(255,255,255,0.06); border-radius: 16px;
+      padding: 12px 14px; color: #fff; font-size: 16px; outline: none;
     }
-    /* Scrollbar nascosta per picker orizzontali */
-    .no-scrollbar::-webkit-scrollbar {
-      display: none;
+    .field:focus { border-color: #0A84FF; }
+    .field::placeholder { color: #71717a; }
+    .btn-primary {
+      width: 100%; background: #0A84FF; color: #fff; font-weight: 700; font-size: 15px;
+      border-radius: 16px; padding: 14px; transition: transform .1s;
     }
-    .no-scrollbar {
-      -ms-overflow-style: none;
-      scrollbar-width: none;
+    .btn-primary:active { transform: scale(0.98); background: #0070e0; }
+    .btn-secondary {
+      background: #2C2C2E; color: #e4e4e7; font-weight: 600; font-size: 13px;
+      border-radius: 14px; padding: 10px 14px; border: 1px solid rgba(255,255,255,0.08);
     }
+    .btn-secondary:active { transform: scale(0.97); }
+    .btn-danger {
+      width: 100%; background: rgba(239,68,68,0.15); color: #f87171; font-weight: 700; font-size: 14px;
+      border-radius: 16px; padding: 12px;
+    }
+    .link { color: #0A84FF; font-weight: 600; font-size: 13px; }
+    .card { background: #1C1C1E; border: 1px solid rgba(255,255,255,0.08); border-radius: 24px; padding: 16px; }
+    .label { display: block; font-size: 11px; font-weight: 700; color: #a1a1aa; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
   </style>
 </head>
 <body class="bg-black text-white min-h-screen select-none">
 
-  <!-- Header Stile iOS Large Title / Frosted Bar -->
-  <header class="sticky top-0 z-30 bg-black/75 backdrop-blur-xl border-b border-white/[0.08] px-5 py-3.5 flex justify-between items-center">
-    <div class="flex items-center space-x-2">
+  <!-- Notifiche a comparsa -->
+  <div id="toast" class="hidden"></div>
+
+  <!-- ==================== OFFLINE ==================== -->
+  <div id="offline-view" class="hidden fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-8 text-center space-y-4">
+    <p class="text-lg font-bold">Sei offline</p>
+    <p class="text-sm text-zinc-400">Per usare Gym Tracker serve una connessione. Riprova quando torni online.</p>
+    <button onclick="boot()" class="btn-primary" style="max-width: 220px">Riprova</button>
+  </div>
+
+  <!-- ==================== ACCESSO / REGISTRAZIONE ==================== -->
+  <div id="auth-screen" class="hidden fixed inset-0 z-40 bg-black overflow-y-auto px-5" style="padding-top: calc(env(safe-area-inset-top) + 2rem); padding-bottom: 3rem;">
+    <div class="max-w-sm mx-auto space-y-6">
+      <div class="flex flex-col items-center space-y-3 pt-4">
+        <div class="w-14 h-14 rounded-2xl bg-blue-500/20 flex items-center justify-center text-blue-400">
+          <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+          </svg>
+        </div>
+        <h1 class="text-2xl font-bold tracking-tight">Gym Tracker</h1>
+      </div>
+
+      <!-- Accedi -->
+      <form id="auth-login" class="hidden space-y-4" onsubmit="event.preventDefault(); doLogin();">
+        <h2 class="text-lg font-bold">Accedi</h2>
+        <div><label class="label" for="login-email">Email</label>
+          <input id="login-email" class="field" type="email" autocomplete="email" inputmode="email" autocapitalize="none" required /></div>
+        <div><label class="label" for="login-password">Password</label>
+          <input id="login-password" class="field" type="password" autocomplete="current-password" required /></div>
+        <button type="submit" class="btn-primary">Accedi</button>
+        <div class="flex justify-between">
+          <button type="button" class="link" onclick="showAuth('forgot')">Password dimenticata?</button>
+          <button type="button" class="link" onclick="showAuth('register')">Crea un account</button>
+        </div>
+      </form>
+
+      <!-- Registrati -->
+      <form id="auth-register" class="hidden space-y-4" onsubmit="event.preventDefault(); doRegister();">
+        <h2 class="text-lg font-bold">Crea un account</h2>
+        <div><label class="label" for="reg-email">Email</label>
+          <input id="reg-email" class="field" type="email" autocomplete="email" inputmode="email" autocapitalize="none" required /></div>
+        <div><label class="label" for="reg-password">Password (almeno 8 caratteri)</label>
+          <input id="reg-password" class="field" type="password" autocomplete="new-password" minlength="8" required /></div>
+        <div id="reg-invite-wrap" class="hidden"><label class="label" for="reg-invite">Codice di invito</label>
+          <input id="reg-invite" class="field" type="text" autocomplete="off" autocapitalize="none" /></div>
+        <label class="flex items-start gap-3 text-sm text-zinc-300">
+          <input id="reg-marketing" type="checkbox" class="mt-1 w-5 h-5 accent-blue-500" />
+          <span>Voglio ricevere novità e aggiornamenti sull'app via email <span class="text-zinc-500">(facoltativo)</span></span>
+        </label>
+        <p class="text-xs text-zinc-500">Creando l'account accetti l'<a href="/privacy" class="underline text-zinc-300">informativa sulla privacy</a>.</p>
+        <button type="submit" class="btn-primary">Crea account</button>
+        <button type="button" class="link" onclick="showAuth('login')">Ho già un account</button>
+      </form>
+
+      <!-- Password dimenticata -->
+      <form id="auth-forgot" class="hidden space-y-4" onsubmit="event.preventDefault(); doForgot();">
+        <h2 class="text-lg font-bold">Password dimenticata</h2>
+        <p class="text-sm text-zinc-400">Inserisci la tua email: ti invieremo un link per sceglierne una nuova.</p>
+        <div><label class="label" for="forgot-email">Email</label>
+          <input id="forgot-email" class="field" type="email" autocomplete="email" inputmode="email" autocapitalize="none" required /></div>
+        <button type="submit" class="btn-primary">Invia il link</button>
+        <button type="button" class="link" onclick="showAuth('login')">Torna all'accesso</button>
+      </form>
+
+      <!-- Nuova password (dal link ricevuto per email) -->
+      <form id="auth-reset" class="hidden space-y-4" onsubmit="event.preventDefault(); doReset();">
+        <h2 class="text-lg font-bold">Scegli una nuova password</h2>
+        <div><label class="label" for="reset-password">Nuova password (almeno 8 caratteri)</label>
+          <input id="reset-password" class="field" type="password" autocomplete="new-password" minlength="8" required /></div>
+        <button type="submit" class="btn-primary">Salva la password</button>
+      </form>
+
+      <!-- Messaggio generico -->
+      <div id="auth-info" class="hidden space-y-4">
+        <h2 id="info-title" class="text-lg font-bold"></h2>
+        <p id="info-text" class="text-sm text-zinc-400"></p>
+        <button class="btn-primary" onclick="showAuth('login')">Vai all'accesso</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== APP ==================== -->
+  <div id="app" class="hidden">
+    <header class="sticky top-0 z-30 bg-black/75 backdrop-blur-xl border-b border-white/[0.08] px-5 py-3.5 flex items-center space-x-2">
       <div class="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
         </svg>
       </div>
       <h1 class="text-xl font-bold tracking-tight text-white">Gym Tracker</h1>
-    </div>
-    <button onclick="changePin()" class="flex items-center space-x-1.5 text-xs font-semibold bg-[#1C1C1E] active:bg-[#2C2C2E] text-zinc-300 px-3 py-1.5 rounded-full border border-white/10 transition">
-      <svg class="w-3.5 h-3.5 text-zinc-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
-      </svg>
-      <span>PIN</span>
-    </button>
-  </header>
+    </header>
 
-  <main class="p-4 max-w-lg mx-auto space-y-5">
+    <main class="p-4 max-w-lg mx-auto space-y-5">
 
-    <!-- ==================== TAB 1: WORKOUT ATTIVO ==================== -->
-    <section id="tab-workout" class="space-y-4">
-      
-      <!-- Schermata Selezione Split (Quando non c'è workout attivo) -->
-      <div id="no-workout-view" class="hidden space-y-4 pt-2">
+      <!-- ==================== TAB 1: WORKOUT ==================== -->
+      <section id="tab-workout" class="space-y-4">
+
+        <!-- Nessun workout attivo -->
+        <div id="no-workout-view" class="hidden space-y-4 pt-2">
+          <div>
+            <h2 class="text-2xl font-bold tracking-tight text-white">Inizia Sessione</h2>
+            <p class="text-xs text-zinc-400 mt-1">Scegli una scheda o allenati liberamente</p>
+          </div>
+          <div id="no-routines-card" class="hidden card space-y-3">
+            <p class="text-sm font-semibold text-zinc-200">Non hai ancora una scheda</p>
+            <p class="text-xs text-zinc-400">Creane una tua, importala da un file CSV oppure parti dalle schede di esempio. Puoi comunque allenarti subito con l'allenamento libero.</p>
+            <div class="flex gap-2">
+              <button class="btn-secondary flex-1" onclick="switchTab('routines')">Vai alle schede</button>
+              <button class="btn-secondary flex-1" onclick="addTemplate()">Usa esempi</button>
+            </div>
+          </div>
+          <div id="splits-grid" class="grid grid-cols-2 gap-3"></div>
+        </div>
+
+        <!-- Workout in corso -->
+        <div id="active-workout-view" class="hidden space-y-4">
+
+          <div class="card space-y-3">
+            <div class="flex justify-between items-center">
+              <span id="active-split-badge" class="bg-blue-500/20 text-blue-400 text-[11px] font-bold px-3 py-1 rounded-full uppercase tracking-wider"></span>
+              <button onclick="endWorkout()" class="bg-red-500/15 hover:bg-red-500/25 active:scale-95 text-red-400 text-xs font-semibold px-3 py-1.5 rounded-full transition">Termina</button>
+            </div>
+            <div id="routine-reminder" class="text-xs text-zinc-300 leading-relaxed bg-[#2C2C2E]/60 p-3 rounded-2xl border border-white/5 space-y-1"></div>
+          </div>
+
+          <div class="space-y-2">
+            <label class="text-[11px] text-zinc-400 uppercase font-bold tracking-wider px-1">Seleziona Esercizio</label>
+            <div id="exercise-buttons" class="flex flex-wrap gap-2"></div>
+            <div class="flex gap-2 pt-1">
+              <input id="custom-exercise" list="exercise-suggestions" class="field" style="padding: 10px 12px; font-size: 14px;" placeholder="Altro esercizio…" maxlength="100" onfocus="loadExerciseSuggestions()" />
+              <datalist id="exercise-suggestions"></datalist>
+              <button class="btn-secondary" onclick="useCustomExercise()">Usa</button>
+            </div>
+          </div>
+
+          <div class="card space-y-3">
+            <div class="flex justify-between items-center px-1">
+              <span class="text-xs font-semibold text-zinc-400">Target</span>
+              <span class="text-xs font-bold text-blue-400" id="selected-ex-label">Nessun esercizio selezionato</span>
+            </div>
+
+            <div id="prev-perf-banner" class="hidden bg-[#2C2C2E]/70 border border-white/10 rounded-2xl p-3 space-y-1 transition-all">
+              <div class="flex justify-between text-[11px]">
+                <span class="text-zinc-400 uppercase font-semibold tracking-wider">Ultima prestazione</span>
+                <span id="prev-perf-date" class="text-zinc-400 font-medium"></span>
+              </div>
+              <div id="prev-perf-sets" class="text-xs font-semibold text-amber-300 tracking-wide"></div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div class="bg-[#2C2C2E] p-2.5 rounded-2xl border border-white/5 focus-within:border-blue-500 transition">
+                <label class="block text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-1">Peso (kg)</label>
+                <input id="inp-weight" type="number" step="0.5" min="0" placeholder="0 (libero)" class="w-full bg-transparent text-lg font-bold text-white placeholder-zinc-600 focus:outline-none" />
+              </div>
+              <div class="bg-[#2C2C2E] p-2.5 rounded-2xl border border-white/5 focus-within:border-blue-500 transition">
+                <label class="block text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-1">Reps o Secondi</label>
+                <input id="inp-reps" type="text" placeholder="es. 8,8,6 o 60s" class="w-full bg-transparent text-lg font-bold text-white placeholder-zinc-600 focus:outline-none" />
+              </div>
+            </div>
+
+            <button onclick="submitSets()" class="w-full bg-[#0A84FF] active:bg-blue-600 active:scale-[0.98] py-3.5 rounded-2xl font-bold text-sm text-white shadow-lg shadow-blue-500/20 transition flex items-center justify-center space-x-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              <span>Registra Serie</span>
+            </button>
+          </div>
+
+          <div class="card space-y-3">
+            <div class="flex justify-between items-center px-1">
+              <h3 class="text-xs font-bold text-zinc-300 uppercase tracking-wider">Log Allenamento Odierno</h3>
+              <button onclick="undoLast()" class="text-xs font-semibold text-red-400 hover:text-red-300 active:scale-95 transition">↩️ Annulla Ultimo</button>
+            </div>
+            <div id="current-sets-list" class="text-xs text-zinc-400 space-y-2"></div>
+          </div>
+
+        </div>
+      </section>
+
+
+      <!-- ==================== TAB 2: STORICO ==================== -->
+      <section id="tab-history" class="hidden space-y-4">
         <div>
-          <h2 class="text-2xl font-bold tracking-tight text-white">Inizia Sessione</h2>
-          <p class="text-xs text-zinc-400 mt-1">Scegli la scheda di allenamento programmata</p>
+          <h2 class="text-2xl font-bold tracking-tight text-white">Cronologia</h2>
+          <p class="text-xs text-zinc-400 mt-1">Archivio sessioni completate e volumi</p>
         </div>
-        <div id="splits-grid" class="grid grid-cols-2 gap-3"></div>
-      </div>
+        <div id="history-list" class="space-y-3"></div>
+      </section>
 
-      <!-- Schermata Workout in Corso -->
-      <div id="active-workout-view" class="hidden space-y-4">
-        
-        <!-- Scheda Riepilogo Routine Attiva -->
-        <div class="bg-[#1C1C1E] rounded-3xl p-4 border border-white/[0.08] shadow-sm space-y-3">
-          <div class="flex justify-between items-center">
-            <span id="active-split-badge" class="bg-blue-500/20 text-blue-400 text-[11px] font-bold px-3 py-1 rounded-full uppercase tracking-wider"></span>
-            <button onclick="endWorkout()" class="bg-red-500/15 hover:bg-red-500/25 active:scale-95 text-red-400 text-xs font-semibold px-3 py-1.5 rounded-full transition">Termina</button>
-          </div>
-          <pre id="routine-reminder" class="text-xs text-zinc-300 font-sans whitespace-pre-wrap leading-relaxed bg-[#2C2C2E]/60 p-3 rounded-2xl border border-white/5"></pre>
+
+      <!-- ==================== TAB 3: ANALYTICS & 1RM ==================== -->
+      <section id="tab-stats" class="hidden space-y-5">
+        <div>
+          <h2 class="text-2xl font-bold tracking-tight text-white">Metriche & Progressi</h2>
+          <p class="text-xs text-zinc-400 mt-1">Volume settimanale ed evoluzione sovraccarichi</p>
         </div>
 
-        <!-- Selettore Esercizi a Scorrimento / Capsule -->
-        <div class="space-y-2">
-          <label class="text-[11px] text-zinc-400 uppercase font-bold tracking-wider px-1">Seleziona Esercizio</label>
-          <div id="exercise-buttons" class="flex flex-wrap gap-2"></div>
+        <div class="card space-y-3">
+          <span class="text-[11px] font-bold text-zinc-400 uppercase tracking-wider block">Volume Ultimi 7 Giorni (Serie Totali)</span>
+          <div id="weekly-volume-grid" class="grid grid-cols-3 gap-2"></div>
         </div>
 
-        <!-- Box Inserimento Serie & Feedback Ultima Sessione -->
-        <div class="bg-[#1C1C1E] rounded-3xl p-4 border border-white/[0.08] shadow-sm space-y-3">
-          <div class="flex justify-between items-center px-1">
-            <span class="text-xs font-semibold text-zinc-400">Target</span>
-            <span class="text-xs font-bold text-blue-400" id="selected-ex-label">Nessun esercizio selezionato</span>
+        <div class="space-y-3">
+          <div class="flex gap-2">
+            <select id="stat-ex-select" class="flex-1 bg-[#1C1C1E] border border-white/[0.08] rounded-2xl p-3 text-xs font-medium text-white focus:outline-none focus:border-blue-500">
+              <option value="">Seleziona un esercizio...</option>
+            </select>
+            <button onclick="loadChartFromSelect()" class="bg-[#0A84FF] active:bg-blue-600 px-5 rounded-2xl font-bold text-xs text-white transition active:scale-95">Mostra</button>
           </div>
 
-          <!-- Banner Prestazione Precedente (Direct Progressive Overload) -->
-          <div id="prev-perf-banner" class="hidden bg-[#2C2C2E]/70 border border-white/10 rounded-2xl p-3 space-y-1 transition-all">
-            <div class="flex justify-between text-[11px]">
-              <span class="text-zinc-400 uppercase font-semibold tracking-wider">Ultima prestazione</span>
-              <span id="prev-perf-date" class="text-zinc-400 font-medium"></span>
-            </div>
-            <div id="prev-perf-sets" class="text-xs font-semibold text-amber-300 tracking-wide"></div>
+          <div class="flex bg-[#1C1C1E] p-1 rounded-2xl border border-white/[0.08] text-xs">
+            <button onclick="setChartMetric('1rm')" id="btn-m-1rm" class="flex-1 py-1.5 rounded-xl font-bold bg-[#2C2C2E] text-white shadow-sm transition">1RM</button>
+            <button onclick="setChartMetric('volume')" id="btn-m-volume" class="flex-1 py-1.5 rounded-xl font-medium text-zinc-400 transition">Volume (kg)</button>
+            <button onclick="setChartMetric('max_weight')" id="btn-m-max_weight" class="flex-1 py-1.5 rounded-xl font-medium text-zinc-400 transition">Max Peso</button>
           </div>
 
-          <!-- Ingressi Numerici -->
-          <div class="grid grid-cols-2 gap-3">
-            <div class="bg-[#2C2C2E] p-2.5 rounded-2xl border border-white/5 focus-within:border-blue-500 transition">
-              <label class="block text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-1">Peso (kg)</label>
-              <input id="inp-weight" type="number" step="0.5" placeholder="0 (libero)" class="w-full bg-transparent text-lg font-bold text-white placeholder-zinc-600 focus:outline-none" />
-            </div>
-            <div class="bg-[#2C2C2E] p-2.5 rounded-2xl border border-white/5 focus-within:border-blue-500 transition">
-              <label class="block text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-1">Reps o Secondi</label>
-              <input id="inp-reps" type="text" placeholder="es. 8,8,6 o 60s" class="w-full bg-transparent text-lg font-bold text-white placeholder-zinc-600 focus:outline-none" />
-            </div>
+          <div class="bg-[#1C1C1E] p-4 rounded-3xl border border-white/[0.08]">
+            <canvas id="progressionChart" height="230"></canvas>
           </div>
-
-          <button onclick="submitSets()" class="w-full bg-[#0A84FF] active:bg-blue-600 active:scale-[0.98] py-3.5 rounded-2xl font-bold text-sm text-white shadow-lg shadow-blue-500/20 transition flex items-center justify-center space-x-2">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-            </svg>
-            <span>Registra Serie</span>
-          </button>
         </div>
+      </section>
 
-        <!-- Serie Registrate Oggi -->
-        <div class="bg-[#1C1C1E] rounded-3xl p-4 border border-white/[0.08] space-y-3">
-          <div class="flex justify-between items-center px-1">
-            <h3 class="text-xs font-bold text-zinc-300 uppercase tracking-wider">Log Allenamento Odierno</h3>
-            <button onclick="undoLast()" class="text-xs font-semibold text-red-400 hover:text-red-300 active:scale-95 transition">↩️ Annulla Ultimo</button>
-          </div>
-          <div id="current-sets-list" class="text-xs text-zinc-400 space-y-2"></div>
+
+      <!-- ==================== TAB 4: SCHEDE ==================== -->
+      <section id="tab-routines" class="hidden space-y-4">
+        <div>
+          <h2 class="text-2xl font-bold tracking-tight text-white">Le tue schede</h2>
+          <p class="text-xs text-zinc-400 mt-1">Crea, modifica o importa i tuoi programmi di allenamento</p>
         </div>
-
-      </div>
-    </section>
-
-
-    <!-- ==================== TAB 2: STORICO ==================== -->
-    <section id="tab-history" class="hidden space-y-4">
-      <div>
-        <h2 class="text-2xl font-bold tracking-tight text-white">Cronologia</h2>
-        <p class="text-xs text-zinc-400 mt-1">Archivio sessioni completate e volumi</p>
-      </div>
-      <div id="history-list" class="space-y-3"></div>
-    </section>
-
-
-    <!-- ==================== TAB 3: ANALYTICS & 1RM ==================== -->
-    <section id="tab-stats" class="hidden space-y-5">
-      
-      <div>
-        <h2 class="text-2xl font-bold tracking-tight text-white">Metriche & Progressi</h2>
-        <p class="text-xs text-zinc-400 mt-1">Volume settimanale ed evoluzione sovraccarichi</p>
-      </div>
-
-      <!-- Volume per Gruppo Muscolare (Ultimi 7 Giorni) -->
-      <div class="bg-[#1C1C1E] rounded-3xl p-4 border border-white/[0.08] space-y-3">
-        <span class="text-[11px] font-bold text-zinc-400 uppercase tracking-wider block">Volume Ultimi 7 Giorni (Serie Totali)</span>
-        <div id="weekly-volume-grid" class="grid grid-cols-3 gap-2"></div>
-      </div>
-
-      <!-- Analisi del Singolo Esercizio -->
-      <div class="space-y-3">
         <div class="flex gap-2">
-          <select id="stat-ex-select" class="flex-1 bg-[#1C1C1E] border border-white/[0.08] rounded-2xl p-3 text-xs font-medium text-white focus:outline-none focus:border-blue-500">
-            <option value="">Seleziona un esercizio...</option>
-          </select>
-          <button onclick="loadChartFromSelect()" class="bg-[#0A84FF] active:bg-blue-600 px-5 rounded-2xl font-bold text-xs text-white transition active:scale-95">Mostra</button>
+          <button class="btn-primary" style="flex: 1" onclick="openRoutineEditor(null)">+ Nuova scheda</button>
+          <button class="btn-secondary" onclick="openImport()">Importa CSV</button>
+        </div>
+        <div id="routines-list" class="space-y-3"></div>
+        <button class="btn-secondary w-full" onclick="addTemplate()">Aggiungi le schede di esempio (Push / Pull / Legs / Upper / Lower)</button>
+      </section>
+
+
+      <!-- ==================== TAB 5: ACCOUNT ==================== -->
+      <section id="tab-account" class="hidden space-y-4">
+        <div>
+          <h2 class="text-2xl font-bold tracking-tight text-white">Account</h2>
         </div>
 
-        <!-- Segmented Control Stile iOS -->
-        <div class="flex bg-[#1C1C1E] p-1 rounded-2xl border border-white/[0.08] text-xs">
-          <button onclick="setChartMetric('1rm')" id="btn-m-1rm" class="flex-1 py-1.5 rounded-xl font-bold bg-[#2C2C2E] text-white shadow-sm transition">1RM</button>
-          <button onclick="setChartMetric('volume')" id="btn-m-volume" class="flex-1 py-1.5 rounded-xl font-medium text-zinc-400 transition">Volume (kg)</button>
-          <button onclick="setChartMetric('max_weight')" id="btn-m-max_weight" class="flex-1 py-1.5 rounded-xl font-medium text-zinc-400 transition">Max Peso</button>
+        <div class="card space-y-1">
+          <span class="label">Email</span>
+          <div id="acc-email" class="font-semibold break-all"></div>
+          <div id="acc-verified" class="text-xs"></div>
+          <button id="acc-resend" class="hidden btn-secondary mt-2" onclick="resendVerification()">Reinvia l'email di verifica</button>
         </div>
 
-        <div class="bg-[#1C1C1E] p-4 rounded-3xl border border-white/[0.08]">
-          <canvas id="progressionChart" height="230"></canvas>
+        <div class="card space-y-2">
+          <label class="flex items-start gap-3 text-sm text-zinc-200">
+            <input id="acc-marketing" type="checkbox" class="mt-1 w-5 h-5 accent-blue-500" onchange="toggleMarketing(this.checked)" />
+            <span>Voglio ricevere novità e aggiornamenti sull'app via email</span>
+          </label>
+          <p class="text-xs text-zinc-500">Puoi cambiare idea quando vuoi. Ogni email di novità contiene anche un link per disiscriversi.</p>
+        </div>
+
+        <form class="card space-y-3" onsubmit="event.preventDefault(); changePassword();">
+          <span class="label">Cambia password</span>
+          <input id="cp-current" class="field" type="password" placeholder="Password attuale" autocomplete="current-password" required />
+          <input id="cp-new" class="field" type="password" placeholder="Nuova password (min. 8 caratteri)" autocomplete="new-password" minlength="8" required />
+          <button type="submit" class="btn-secondary w-full">Aggiorna password</button>
+        </form>
+
+        <div class="card space-y-3">
+          <span class="label">I tuoi dati</span>
+          <button class="btn-secondary w-full" onclick="exportData()">Scarica una copia dei miei dati</button>
+          <p class="text-xs text-zinc-500">Consulta l'<a href="/privacy" class="underline text-zinc-300">informativa sulla privacy</a>.</p>
+        </div>
+
+        <button class="btn-secondary w-full" onclick="logout()">Esci</button>
+
+        <form class="card space-y-3 border-red-500/30" onsubmit="event.preventDefault(); deleteAccount();">
+          <span class="label" style="color:#f87171">Elimina account</span>
+          <p class="text-xs text-zinc-400">Cancella per sempre il tuo account e tutti i tuoi dati: allenamenti, serie e schede. L'operazione non si può annullare.</p>
+          <input id="del-password" class="field" type="password" placeholder="Inserisci la password per confermare" autocomplete="current-password" required />
+          <button type="submit" class="btn-danger">Elimina definitivamente il mio account</button>
+        </form>
+      </section>
+
+    </main>
+
+    <!-- Barra di navigazione inferiore -->
+    <nav class="fixed bottom-0 left-0 right-0 bg-black/80 backdrop-blur-2xl border-t border-white/[0.08] flex justify-around py-2.5 pb-safe z-30">
+      <button onclick="switchTab('workout')" id="nav-workout" class="flex flex-col items-center text-[#0A84FF] transition">
+        <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" /></svg>
+        <span class="text-[10px] font-semibold tracking-tight">Workout</span>
+      </button>
+      <button onclick="switchTab('history')" id="nav-history" class="flex flex-col items-center text-zinc-500 transition">
+        <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+        <span class="text-[10px] font-semibold tracking-tight">Storico</span>
+      </button>
+      <button onclick="switchTab('stats')" id="nav-stats" class="flex flex-col items-center text-zinc-500 transition">
+        <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" /></svg>
+        <span class="text-[10px] font-semibold tracking-tight">Progressi</span>
+      </button>
+      <button onclick="switchTab('routines')" id="nav-routines" class="flex flex-col items-center text-zinc-500 transition">
+        <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" /></svg>
+        <span class="text-[10px] font-semibold tracking-tight">Schede</span>
+      </button>
+      <button onclick="switchTab('account')" id="nav-account" class="flex flex-col items-center text-zinc-500 transition">
+        <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17.982 18.725A7.488 7.488 0 0012 15.75a7.488 7.488 0 00-5.982 2.975m11.963 0a9 9 0 10-11.963 0m11.963 0A8.966 8.966 0 0112 21a8.966 8.966 0 01-5.982-2.275M15 9.75a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+        <span class="text-[10px] font-semibold tracking-tight">Account</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- ==================== MODALE: EDITOR SCHEDA ==================== -->
+  <div id="routine-modal" class="hidden fixed inset-0 z-50 bg-black/80 overflow-y-auto">
+    <div class="max-w-lg mx-auto p-4" style="padding-top: calc(env(safe-area-inset-top) + 1rem); padding-bottom: 6rem;">
+      <div class="card space-y-4">
+        <h3 id="ed-title" class="text-lg font-bold"></h3>
+        <div><label class="label" for="ed-name">Nome della scheda</label>
+          <input id="ed-name" class="field" maxlength="50" placeholder="es. Push" /></div>
+        <div><label class="label" for="ed-notes">Note (facoltative)</label>
+          <textarea id="ed-notes" class="field" rows="2" maxlength="300"></textarea></div>
+        <div>
+          <span class="label">Esercizi</span>
+          <div id="ed-exercises" class="space-y-3"></div>
+          <button class="btn-secondary w-full mt-3" onclick="addEditorExercise()">+ Aggiungi esercizio</button>
+        </div>
+        <div class="flex gap-2">
+          <button class="btn-secondary flex-1" onclick="closeModal('routine-modal')">Annulla</button>
+          <button class="btn-primary" style="flex: 1" onclick="saveRoutine()">Salva</button>
         </div>
       </div>
+    </div>
+  </div>
 
-    </section>
+  <!-- ==================== MODALE: IMPORTA CSV ==================== -->
+  <div id="import-modal" class="hidden fixed inset-0 z-50 bg-black/80 overflow-y-auto">
+    <div class="max-w-lg mx-auto p-4" style="padding-top: calc(env(safe-area-inset-top) + 1rem); padding-bottom: 6rem;">
+      <div class="card space-y-3">
+        <h3 class="text-lg font-bold">Importa schede da CSV</h3>
+        <p class="text-xs text-zinc-400">Una riga per esercizio, con le colonne <b>scheda</b>, <b>esercizio</b> e (facoltative) <b>gruppo</b> e <b>note</b>. Puoi esportarlo da Excel o Fogli Google (separatore virgola o punto e virgola). Se esiste già una scheda con lo stesso nome, i suoi esercizi vengono sostituiti.</p>
+        <input id="import-file" type="file" accept=".csv,text/csv,text/plain" class="text-xs text-zinc-400" onchange="loadImportFile(this)" />
+        <textarea id="import-text" class="field" rows="9" placeholder="Incolla qui il contenuto del CSV" style="font-size: 13px; font-family: ui-monospace, monospace;"></textarea>
+        <button class="btn-secondary w-full" onclick="fillImportTemplate()">Inserisci un modello di esempio</button>
+        <div class="flex gap-2">
+          <button class="btn-secondary flex-1" onclick="closeModal('import-modal')">Annulla</button>
+          <button class="btn-primary" style="flex: 1" onclick="importRoutines()">Importa</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
-  </main>
-
-  <!-- ==================== BARRA DI NAVIGAZIONE INFERIORE (iOS TAB BAR) ==================== -->
-  <nav class="fixed bottom-0 left-0 right-0 bg-black/80 backdrop-blur-2xl border-t border-white/[0.08] flex justify-around py-2.5 pb-safe z-40">
-    <button onclick="switchTab('workout')" id="nav-workout" class="flex flex-col items-center text-[#0A84FF] transition">
-      <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
-      </svg>
-      <span class="text-[10px] font-semibold tracking-tight">Workout</span>
-    </button>
-    <button onclick="switchTab('history')" id="nav-history" class="flex flex-col items-center text-zinc-500 transition">
-      <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-      <span class="text-[10px] font-semibold tracking-tight">Storico</span>
-    </button>
-    <button onclick="switchTab('stats')" id="nav-stats" class="flex flex-col items-center text-zinc-500 transition">
-      <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" />
-      </svg>
-      <span class="text-[10px] font-semibold tracking-tight">Progressi</span>
-    </button>
-  </nav>
+  <!-- ==================== MODALE: ESPORTA DATI ==================== -->
+  <div id="export-modal" class="hidden fixed inset-0 z-50 bg-black/80 overflow-y-auto">
+    <div class="max-w-lg mx-auto p-4" style="padding-top: calc(env(safe-area-inset-top) + 1rem); padding-bottom: 6rem;">
+      <div class="card space-y-3">
+        <h3 class="text-lg font-bold">I tuoi dati</h3>
+        <p class="text-xs text-zinc-400">Copia il testo e salvalo dove preferisci (per esempio in Note).</p>
+        <textarea id="export-text" class="field" rows="14" readonly style="font-size: 12px; font-family: ui-monospace, monospace;"></textarea>
+        <div class="flex gap-2">
+          <button class="btn-secondary flex-1" onclick="copyExport()">Copia</button>
+          <button class="btn-primary" style="flex: 1" onclick="closeModal('export-modal')">Chiudi</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script>
-    let apiKey = localStorage.getItem("gym_api_key") || "";
-    let catalog = {};
+    // ============================ Stato ============================
+    let token = localStorage.getItem("gym_token") || "";
+    let appConfig = { invite_required: false, verification_required: false, muscle_groups: ["Petto", "Dorso", "Gambe", "Spalle", "Braccia", "Addome", "Altro"] };
+    let me = null;
+    let routines = [];
+    let activeData = { active: false };
     let selectedExercise = "";
+    let currentTab = "workout";
     let chartInstance = null;
     let currentMetric = "1rm";
     let currentProgressionData = [];
+    let editingRoutineId = null;
+    let editorExercises = [];
+    let pendingVerifyToken = "";
+    let pendingResetToken = "";
+    let suggestionsLoaded = false;
 
-    // Client HTTP con autenticazione PIN
-    async function api(path, options = {}) {
-      if (!apiKey) {
-        apiKey = prompt("Inserisci il PIN (API_KEY configurata nel .env):") || "";
-        localStorage.setItem("gym_api_key", apiKey);
+    const $ = (id) => document.getElementById(id);
+
+    // Escape dei testi inseriti nell'HTML via innerHTML (nomi di schede ed esercizi sono scritti dall'utente)
+    function esc(value) {
+      return String(value ?? "").replace(/[&<>"']/g, c => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      }[c]));
+    }
+
+    // ============================ Notifiche ============================
+    let toastTimer = null;
+    function toast(message, kind = "error") {
+      const el = $("toast");
+      el.textContent = message;
+      el.style.top = "calc(env(safe-area-inset-top) + 1rem)";
+      el.className = "fixed inset-x-4 z-[100] mx-auto max-w-md rounded-2xl px-4 py-3 text-sm font-semibold shadow-lg text-white "
+        + (kind === "ok" ? "bg-emerald-600" : "bg-red-600");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => el.classList.add("hidden"), 4500);
+    }
+
+    // ============================ Client HTTP ============================
+    class ApiError extends Error {
+      constructor(message, status) { super(message); this.status = status; this.silent = false; }
+    }
+
+    function formatDetail(detail) {
+      if (typeof detail === "string") return detail;
+      if (Array.isArray(detail)) return "Dati non validi: controlla i campi inseriti.";
+      return "Qualcosa è andato storto, riprova.";
+    }
+
+    async function api(path, options = {}, auth = true) {
+      const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+      if (auth && token) headers["Authorization"] = "Bearer " + token;
+      let res;
+      try {
+        res = await fetch(path, { ...options, headers });
+      } catch (e) {
+        throw new ApiError("Connessione assente: riprova quando sei online.", 0);
       }
-      options.headers = {
-        ...options.headers,
-        "Content-Type": "application/json",
-        "X-API-Key": apiKey
-      };
-      const res = await fetch(path, options);
-      if (res.status === 401) {
-        localStorage.removeItem("gym_api_key");
-        apiKey = "";
-        alert("PIN non valido!");
-        throw new Error("Unauthorized");
+      if (res.status === 401 && auth) {
+        forceLogout("Sessione scaduta: accedi di nuovo.");
+        const err = new ApiError("Non autorizzato", 401);
+        err.silent = true;
+        throw err;
       }
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: "Errore di connessione" }));
-        alert(err.detail || "Errore");
-        throw new Error(err.detail);
+        const body = await res.json().catch(() => ({}));
+        throw new ApiError(formatDetail(body.detail), res.status);
       }
       return res.json();
     }
 
-    // Formattazione coerente del set
+    const post = (path, data, auth = true) => api(path, { method: "POST", body: JSON.stringify(data ?? {}) }, auth);
+
+    // Avvolge un gestore: gli errori diventano notifiche invece di eccezioni non gestite
+    function guard(fn) {
+      return async (...args) => {
+        try { return await fn(...args); }
+        catch (e) { if (!e.silent) toast(e.message || "Errore"); }
+      };
+    }
+
+    // ============================ Sessione ============================
+    function setSession(newToken, user) {
+      token = newToken;
+      me = user;
+      localStorage.setItem("gym_token", token);
+      localStorage.removeItem("gym_api_key"); // PIN della versione a utente singolo
+    }
+
+    function clearSession() {
+      token = "";
+      me = null;
+      localStorage.removeItem("gym_token");
+    }
+
+    function resetState() {
+      routines = [];
+      activeData = { active: false };
+      selectedExercise = "";
+      currentProgressionData = [];
+      suggestionsLoaded = false;
+      if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+    }
+
+    function forceLogout(message) {
+      clearSession();
+      resetState();
+      showAuth("login");
+      if (message) toast(message);
+    }
+
+    // ============================ Schermate di accesso ============================
+    function showAuth(view) {
+      $("offline-view").classList.add("hidden");
+      $("app").classList.add("hidden");
+      $("auth-screen").classList.remove("hidden");
+      ["login", "register", "forgot", "reset", "info"].forEach(v => $("auth-" + v).classList.toggle("hidden", v !== view));
+      $("reg-invite-wrap").classList.toggle("hidden", !appConfig.invite_required);
+    }
+
+    function showInfo(title, text) {
+      $("info-title").textContent = title;
+      $("info-text").textContent = text;
+      showAuth("info");
+    }
+
+    const doLogin = guard(async () => {
+      const data = await post("/api/auth/login", {
+        email: $("login-email").value.trim(), password: $("login-password").value
+      }, false);
+      $("login-password").value = "";
+      setSession(data.token, data.user);
+      await enterApp();
+    });
+
+    const doRegister = guard(async () => {
+      const data = await post("/api/auth/register", {
+        email: $("reg-email").value.trim(),
+        password: $("reg-password").value,
+        marketing_opt_in: $("reg-marketing").checked,
+        invite_code: $("reg-invite").value.trim()
+      }, false);
+      $("reg-password").value = "";
+      if (data.verification_required) {
+        showInfo("Controlla la tua email", "Ti abbiamo inviato un link per confermare l'indirizzo. Aprilo, poi accedi.");
+        return;
+      }
+      setSession(data.token, data.user);
+      await enterApp();
+      toast("Account creato! Ti abbiamo inviato un'email per confermare l'indirizzo.", "ok");
+    });
+
+    const doForgot = guard(async () => {
+      await post("/api/auth/forgot-password", { email: $("forgot-email").value.trim() }, false);
+      showInfo("Controlla la tua email", "Se l'indirizzo è registrato, riceverai un link per scegliere una nuova password.");
+    });
+
+    const doReset = guard(async () => {
+      await post("/api/auth/reset-password", { token: pendingResetToken, password: $("reset-password").value }, false);
+      pendingResetToken = "";
+      $("reset-password").value = "";
+      showAuth("login");
+      toast("Password aggiornata: ora puoi accedere.", "ok");
+    });
+
+    // ============================ Avvio ============================
+    function readHashLinks() {
+      // I token stanno nel frammento (#...) così non finiscono mai nei log del server
+      const m = location.hash.match(/^#(verify|reset)=([\w-]+)$/);
+      if (!m) return;
+      history.replaceState(null, "", location.pathname + location.search);
+      if (m[1] === "verify") pendingVerifyToken = m[2];
+      else pendingResetToken = m[2];
+    }
+
+    async function boot() {
+      $("offline-view").classList.add("hidden");
+      readHashLinks();
+
+      try { appConfig = await api("/api/public-config", {}, false); } catch (e) { /* si usano i valori predefiniti */ }
+
+      if (pendingVerifyToken) {
+        const t = pendingVerifyToken;
+        pendingVerifyToken = "";
+        try {
+          await post("/api/auth/verify-email", { token: t }, false);
+          toast("Email verificata, grazie!", "ok");
+        } catch (e) { toast(e.message); }
+      }
+
+      if (pendingResetToken) { showAuth("reset"); return; }
+      if (!token) { showAuth("login"); return; }
+
+      try {
+        me = await api("/api/auth/me");
+      } catch (e) {
+        if (e.status === 0) { $("offline-view").classList.remove("hidden"); }
+        return; // 401: api() ha già mostrato l'accesso
+      }
+      await enterApp();
+    }
+
+    async function enterApp() {
+      $("auth-screen").classList.add("hidden");
+      $("offline-view").classList.add("hidden");
+      $("app").classList.remove("hidden");
+      renderAccount();
+      await switchTab("workout");
+    }
+
+    // ============================ Formattazione ============================
     function formatSet(s) {
-      if (s.duration) return `${s.duration}s`;
+      if (s.duration) return s.weight > 0 ? `${s.weight}kg × ${s.duration}s` : `${s.duration}s`;
       if (s.weight && s.weight > 0) return `${s.weight}kg × ${s.reps}`;
       return `${s.reps} reps`;
     }
 
-    function changePin() {
-      const p = prompt("Inserisci il nuovo PIN:", apiKey);
-      if (p !== null) {
-        apiKey = p;
-        localStorage.setItem("gym_api_key", apiKey);
-        init();
-      }
-    }
-
-    async function init() {
-      try {
-        catalog = await api("/api/catalog");
-        renderSplits();
-        await refreshActiveWorkout();
-      } catch (e) {
-        console.error("Inizializzazione fallita:", e);
-      }
-    }
-
-    function renderSplits() {
-      const grid = document.getElementById("splits-grid");
-      grid.innerHTML = "";
-      Object.keys(catalog).forEach(split => {
-        const btn = document.createElement("button");
-        btn.className = "bg-[#1C1C1E] active:scale-[0.97] border border-white/[0.08] p-5 rounded-3xl font-bold text-left text-base text-white transition flex flex-col justify-between h-28 shadow-sm";
-        btn.innerHTML = `
-          <div class="w-7 h-7 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-400">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
-          </div>
-          <span>${split}</span>
-        `;
-        btn.onclick = () => startWorkout(split);
-        grid.appendChild(btn);
-      });
-    }
-
+    // ============================ Tab Workout ============================
     async function refreshActiveWorkout() {
-      const data = await api("/api/workout/active");
-      const noView = document.getElementById("no-workout-view");
-      const actView = document.getElementById("active-workout-view");
+      const [routineList, active] = await Promise.all([api("/api/routines"), api("/api/workout/active")]);
+      routines = routineList;
+      activeData = active;
+      renderWorkoutTab();
+    }
 
-      if (!data.active) {
+    function routineExerciseNames() {
+      return (activeData.routine && activeData.routine.exercises || []).map(e => e.name);
+    }
+
+    function renderWorkoutTab() {
+      const noView = $("no-workout-view");
+      const actView = $("active-workout-view");
+
+      if (!activeData.active) {
         noView.classList.remove("hidden");
         actView.classList.add("hidden");
+        $("no-routines-card").classList.toggle("hidden", routines.length > 0);
+
+        const grid = $("splits-grid");
+        grid.innerHTML = "";
+        const addButton = (label, sublabel, onClick) => {
+          const btn = document.createElement("button");
+          btn.className = "bg-[#1C1C1E] active:scale-[0.97] border border-white/[0.08] p-5 rounded-3xl font-bold text-left text-base text-white transition flex flex-col justify-between h-28 shadow-sm";
+          btn.innerHTML = `
+            <div class="w-7 h-7 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-400">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+            </div>
+            <div><span class="block">${esc(label)}</span><span class="block text-[11px] font-medium text-zinc-500">${esc(sublabel)}</span></div>`;
+          btn.onclick = onClick;
+          grid.appendChild(btn);
+        };
+        routines.forEach(r => addButton(r.name, `${r.exercises.length} esercizi`, () => startWorkout(r.id)));
+        addButton("Allenamento libero", "senza scheda", () => startWorkout(null));
         return;
       }
 
       noView.classList.add("hidden");
       actView.classList.remove("hidden");
-      document.getElementById("active-split-badge").textContent = `SPLIT: ${data.split.toUpperCase()}`;
+      $("active-split-badge").textContent = activeData.split;
 
-      const cleanText = (data.routine.text || "").replace(/<\/?[^>]+(>|$)/g, "");
-      document.getElementById("routine-reminder").textContent = cleanText;
+      const reminder = $("routine-reminder");
+      const exercises = activeData.routine ? activeData.routine.exercises : [];
+      if (exercises.length) {
+        reminder.innerHTML = exercises.map(e =>
+          `<div><span class="font-semibold text-zinc-200">• ${esc(e.name)}</span>${e.note ? ` <span class="text-zinc-400">— ${esc(e.note)}</span>` : ""}</div>`
+        ).join("");
+      } else {
+        reminder.textContent = "Allenamento libero: scegli un esercizio qui sotto o scrivine uno tuo.";
+      }
 
-      const exContainer = document.getElementById("exercise-buttons");
-      exContainer.innerHTML = "";
-      (data.routine.exercises || []).forEach(ex => {
-        const b = document.createElement("button");
-        const isSel = selectedExercise === ex;
-        b.className = `px-3.5 py-2 rounded-2xl text-xs font-semibold border transition active:scale-95 ${
-          isSel 
-            ? 'bg-[#0A84FF] border-[#0A84FF] text-white shadow-md shadow-blue-500/20' 
-            : 'bg-[#1C1C1E] border-white/[0.08] text-zinc-300'
-        }`;
-        b.textContent = ex;
-        b.onclick = async () => {
-          selectedExercise = ex;
-          document.getElementById("selected-ex-label").textContent = ex;
-          
-          // Recupero e display prestazione precedente
-          const banner = document.getElementById("prev-perf-banner");
-          try {
-            const prev = await api(`/api/exercises/${encodeURIComponent(ex)}/last`);
-            if (prev && prev.date) {
-              document.getElementById("prev-perf-date").textContent = prev.date;
-              document.getElementById("prev-perf-sets").textContent = prev.sets.map(formatSet).join("   •   ");
-              banner.classList.remove("hidden");
-            } else {
-              banner.classList.add("hidden");
-            }
-          } catch (e) {
-            banner.classList.add("hidden");
-          }
+      renderExerciseChips();
 
-          refreshActiveWorkout();
-        };
-        exContainer.appendChild(b);
-      });
-
-      // Serie registrate oggi raggruppate
+      // Serie registrate oggi raggruppate per esercizio, nell'ordine di esecuzione
       const grouped = {};
-      data.sets.forEach(s => {
-        if (!grouped[s.exercise]) grouped[s.exercise] = [];
-        grouped[s.exercise].push(formatSet(s));
+      activeData.sets.forEach(s => {
+        (grouped[s.exercise] = grouped[s.exercise] || []).push(formatSet(s));
       });
-      const list = document.getElementById("current-sets-list");
+      const list = $("current-sets-list");
       list.innerHTML = Object.keys(grouped).length
         ? Object.entries(grouped).map(([ex, sets]) => `
             <div class="bg-[#2C2C2E]/50 p-2.5 rounded-2xl border border-white/5">
-              <span class="font-bold text-zinc-200 block mb-0.5">${ex}</span>
-              <span class="text-zinc-400 font-medium">${sets.join("  •  ")}</span>
+              <span class="font-bold text-zinc-200 block mb-0.5">${esc(ex)}</span>
+              <span class="text-zinc-400 font-medium">${esc(sets.join("  •  "))}</span>
             </div>
           `).join("")
         : "<div class='text-zinc-500 py-1'>Nessuna serie registrata in questa sessione.</div>";
     }
 
-    async function startWorkout(split) {
-      await api("/api/workout/start", { method: "POST", body: JSON.stringify({ split_name: split }) });
-      selectedExercise = "";
-      await refreshActiveWorkout();
+    function renderExerciseChips() {
+      // Esercizi della scheda + quelli già registrati oggi che non ne fanno parte
+      const names = routineExerciseNames();
+      const known = new Set(names.map(n => n.toLowerCase()));
+      (activeData.sets || []).forEach(s => {
+        if (!known.has(s.exercise.toLowerCase())) { known.add(s.exercise.toLowerCase()); names.push(s.exercise); }
+      });
+
+      const container = $("exercise-buttons");
+      container.innerHTML = "";
+      names.forEach(ex => {
+        const b = document.createElement("button");
+        const isSel = selectedExercise.toLowerCase() === ex.toLowerCase();
+        b.className = `px-3.5 py-2 rounded-2xl text-xs font-semibold border transition active:scale-95 ${
+          isSel
+            ? 'bg-[#0A84FF] border-[#0A84FF] text-white shadow-md shadow-blue-500/20'
+            : 'bg-[#1C1C1E] border-white/[0.08] text-zinc-300'
+        }`;
+        b.textContent = ex;
+        b.onclick = () => selectExercise(ex);
+        container.appendChild(b);
+      });
+      $("selected-ex-label").textContent = selectedExercise || "Nessun esercizio selezionato";
     }
 
-    async function submitSets() {
-      if (!selectedExercise) return alert("Seleziona prima un esercizio!");
+    const selectExercise = guard(async (name) => {
+      selectedExercise = name;
+      renderExerciseChips();
 
-      const weightInput = document.getElementById("inp-weight").value.trim();
-      const valRaw = document.getElementById("inp-reps").value.trim().toLowerCase();
-      if (!valRaw) return alert("Inserisci ripetizioni (es. 8,8,6) o tempo (es. 60s)!");
+      // Prestazione precedente (progressive overload)
+      const banner = $("prev-perf-banner");
+      banner.classList.add("hidden");
+      const prev = await api(`/api/exercises/${encodeURIComponent(name)}/last`);
+      if (selectedExercise === name && prev && prev.date) {
+        $("prev-perf-date").textContent = prev.date;
+        $("prev-perf-sets").textContent = prev.sets.map(formatSet).join("   •   ");
+        banner.classList.remove("hidden");
+      }
+    });
 
-      const weight = weightInput !== "" ? parseFloat(weightInput) : 0.0;
+    function useCustomExercise() {
+      const value = $("custom-exercise").value.trim();
+      if (!value) return toast("Scrivi il nome dell'esercizio.");
+      $("custom-exercise").value = "";
+      selectExercise(value);
+    }
+
+    const loadExerciseSuggestions = guard(async () => {
+      if (suggestionsLoaded) return;
+      suggestionsLoaded = true;
+      const list = await api("/api/analytics/exercises");
+      $("exercise-suggestions").innerHTML = list.map(ex => `<option value="${esc(ex)}"></option>`).join("");
+    });
+
+    const startWorkout = guard(async (routineId) => {
+      await post("/api/workout/start", { routine_id: routineId });
+      selectedExercise = "";
+      $("prev-perf-banner").classList.add("hidden");
+      await refreshActiveWorkout();
+    });
+
+    const submitSets = guard(async () => {
+      if (!selectedExercise) return toast("Seleziona prima un esercizio!");
+
+      const weightInput = $("inp-weight").value.trim();
+      const valRaw = $("inp-reps").value.trim().toLowerCase();
+      if (!valRaw) return toast("Inserisci ripetizioni (es. 8,8,6) o tempo (es. 60s)!");
+
+      const parsedWeight = weightInput !== "" ? parseFloat(weightInput) : 0.0;
+      const weight = isNaN(parsedWeight) || parsedWeight < 0 ? 0.0 : parsedWeight;
       const parts = valRaw.split(/[\s,]+/).filter(Boolean);
       const setsPayload = [];
 
@@ -379,142 +790,123 @@
           if (m) sec += parseInt(m[1]) * 60;
           const s = part.match(/(\d+)s/);
           if (s) sec += parseInt(s[1]);
-          if (sec > 0) setsPayload.push({ weight: 0.0, reps: 0, duration: sec });
+          // Il peso resta registrato anche per le serie a tempo (es. plank zavorrato)
+          if (sec > 0) setsPayload.push({ weight: weight, reps: 0, duration: sec });
         } else {
           const reps = parseInt(part);
-          if (!isNaN(reps)) setsPayload.push({ weight: isNaN(weight) ? 0.0 : weight, reps: reps, duration: null });
+          if (!isNaN(reps) && reps > 0) setsPayload.push({ weight: weight, reps: reps, duration: null });
         }
       }
 
-      if (!setsPayload.length) return alert("Nessun dato valido inserito.");
+      if (!setsPayload.length) return toast("Nessun dato valido inserito.");
 
-      await api("/api/workout/sets", {
-        method: "POST",
-        body: JSON.stringify({ exercise: selectedExercise, sets: setsPayload })
-      });
-
-      document.getElementById("inp-reps").value = "";
+      await post("/api/workout/sets", { exercise: selectedExercise, sets: setsPayload });
+      $("inp-reps").value = "";
       await refreshActiveWorkout();
-    }
+    });
 
-    async function undoLast() {
+    const undoLast = guard(async () => {
       if (!confirm("Annullare l'ultimo esercizio inserito?")) return;
       await api("/api/workout/sets/last", { method: "DELETE" });
       await refreshActiveWorkout();
-    }
+    });
 
-    async function endWorkout() {
+    const endWorkout = guard(async () => {
       if (!confirm("Concludere la sessione di allenamento?")) return;
-      await api("/api/workout/end", { method: "POST" });
+      await post("/api/workout/end");
       selectedExercise = "";
+      $("prev-perf-banner").classList.add("hidden");
       await refreshActiveWorkout();
-    }
+      toast("Allenamento concluso. Ottimo lavoro!", "ok");
+    });
 
-    async function loadHistory() {
+    // ============================ Tab Storico ============================
+    const loadHistory = guard(async () => {
       const list = await api("/api/workouts/history");
-      const container = document.getElementById("history-list");
+      const container = $("history-list");
       if (!list.length) {
         container.innerHTML = "<p class='text-zinc-500 text-xs'>Nessun workout registrato.</p>";
         return;
       }
       container.innerHTML = list.map(w => {
         const grouped = {};
-        w.sets.forEach(s => {
-          if (!grouped[s.exercise]) grouped[s.exercise] = [];
-          grouped[s.exercise].push(formatSet(s));
-        });
+        w.sets.forEach(s => { (grouped[s.exercise] = grouped[s.exercise] || []).push(formatSet(s)); });
         const details = Object.entries(grouped).map(([ex, s]) => `
           <div class="text-[11px] text-zinc-400">
-            <span class="text-zinc-300 font-semibold">• ${ex}:</span> ${s.join(", ")}
+            <span class="text-zinc-300 font-semibold">• ${esc(ex)}:</span> ${esc(s.join(", "))}
           </div>
         `).join("");
 
         return `
-          <div class="bg-[#1C1C1E] p-4 rounded-3xl border border-white/[0.08] space-y-3">
+          <div class="card space-y-3">
             <div class="flex justify-between items-center">
               <div>
-                <span class="font-bold text-white text-base block">${w.split}</span>
-                <span class="text-[11px] text-zinc-400">${w.date}</span>
+                <span class="font-bold text-white text-base block">${esc(w.split)}</span>
+                <span class="text-[11px] text-zinc-400">${esc(w.date)}</span>
               </div>
-              <button onclick="deleteWorkout(${w.id})" class="text-xs text-red-400/80 hover:text-red-400 font-semibold px-2 py-1 bg-red-500/10 rounded-lg">Elimina</button>
+              <button onclick="deleteWorkout(${Number(w.id)})" class="text-xs text-red-400/80 hover:text-red-400 font-semibold px-2 py-1 bg-red-500/10 rounded-lg">Elimina</button>
             </div>
             <div class="text-xs font-semibold text-blue-400">Volume: ${Math.round(w.volume)} kg (${w.sets_count} serie)</div>
             <div class="space-y-1.5 pt-2 border-t border-white/5">${details}</div>
           </div>
         `;
       }).join("");
-    }
+    });
 
-    async function deleteWorkout(id) {
+    const deleteWorkout = guard(async (id) => {
       if (!confirm("Eliminare definitivamente questo allenamento?")) return;
       await api(`/api/workouts/${id}`, { method: "DELETE" });
-      loadHistory();
-    }
+      await loadHistory();
+    });
 
-    // Analytics: lista esercizi
-    async function loadExerciseList() {
-      const select = document.getElementById("stat-ex-select");
-      if (!select) return;
-      try {
-        const list = await api("/api/analytics/exercises");
-        select.innerHTML = '<option value="">Seleziona un esercizio...</option>';
-        list.forEach(ex => {
-          const opt = document.createElement("option");
-          opt.value = ex;
-          opt.textContent = ex;
-          select.appendChild(opt);
-        });
-      } catch (e) {
-        select.innerHTML = '<option value="">Errore caricamento</option>';
-      }
-    }
+    // ============================ Tab Progressi ============================
+    const loadExerciseList = guard(async () => {
+      const select = $("stat-ex-select");
+      const list = await api("/api/analytics/exercises");
+      select.innerHTML = '<option value="">Seleziona un esercizio...</option>';
+      list.forEach(ex => {
+        const opt = document.createElement("option");
+        opt.value = ex;
+        opt.textContent = ex;
+        select.appendChild(opt);
+      });
+    });
 
-    // Analytics: volume settimanale per muscolo
-    async function loadWeeklyVolume() {
-      try {
-        const data = await api("/api/analytics/weekly-volume");
-        const grid = document.getElementById("weekly-volume-grid");
-        grid.innerHTML = Object.entries(data).map(([group, sets]) => `
+    const loadWeeklyVolume = guard(async () => {
+      const data = await api("/api/analytics/weekly-volume");
+      $("weekly-volume-grid").innerHTML = Object.entries(data)
+        .filter(([group, sets]) => group !== "Altro" || sets > 0)
+        .map(([group, sets]) => `
           <div class="bg-[#2C2C2E]/70 border border-white/5 p-3 rounded-2xl text-center">
-            <span class="text-[10px] uppercase font-bold text-zinc-400 block tracking-wider">${group}</span>
+            <span class="text-[10px] uppercase font-bold text-zinc-400 block tracking-wider">${esc(group)}</span>
             <span class="text-lg font-bold ${sets > 0 ? 'text-[#0A84FF]' : 'text-zinc-600'}">${sets}</span>
             <span class="text-[9px] text-zinc-500 block">serie</span>
           </div>
         `).join("");
-      } catch (e) {
-        console.error("Errore volume settimanale:", e);
-      }
-    }
+    });
 
-    // Analytics: gestione selettore metrica
     function setChartMetric(metric) {
       currentMetric = metric;
       ["1rm", "volume", "max_weight"].forEach(m => {
-        const btn = document.getElementById(`btn-m-${m}`);
-        if (m === metric) {
-          btn.className = "flex-1 py-1.5 rounded-xl font-bold bg-[#2C2C2E] text-white shadow-sm transition";
-        } else {
-          btn.className = "flex-1 py-1.5 rounded-xl font-medium text-zinc-500 transition";
-        }
+        $(`btn-m-${m}`).className = m === metric
+          ? "flex-1 py-1.5 rounded-xl font-bold bg-[#2C2C2E] text-white shadow-sm transition"
+          : "flex-1 py-1.5 rounded-xl font-medium text-zinc-500 transition";
       });
       renderChart();
     }
 
-    async function loadChartFromSelect() {
-      const select = document.getElementById("stat-ex-select");
-      const ex = select ? select.value : "";
-      if (!ex) return alert("Seleziona prima un esercizio!");
-
+    const loadChartFromSelect = guard(async () => {
+      const ex = $("stat-ex-select").value;
+      if (!ex) return toast("Seleziona prima un esercizio!");
       currentProgressionData = await api(`/api/analytics/${encodeURIComponent(ex)}`);
-      if (!currentProgressionData.length) return alert("Nessun dato registrato per questo esercizio.");
+      if (!currentProgressionData.length) return toast("Nessun dato registrato per questo esercizio.");
       renderChart();
-    }
+    });
 
     function renderChart() {
       if (!currentProgressionData.length) return;
-      const select = document.getElementById("stat-ex-select");
-      const ex = select.value;
-      const ctx = document.getElementById("progressionChart").getContext("2d");
+      const ex = $("stat-ex-select").value;
+      const ctx = $("progressionChart").getContext("2d");
       if (chartInstance) chartInstance.destroy();
 
       const labelsMap = {
@@ -542,55 +934,266 @@
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          plugins: {
-            legend: { labels: { color: "#E5E5EA", font: { size: 11, weight: 600 } } }
-          },
+          plugins: { legend: { labels: { color: "#E5E5EA", font: { size: 11, weight: 600 } } } },
           scales: {
-            x: { 
-              grid: { color: "rgba(255, 255, 255, 0.05)" },
-              ticks: { color: "#8E8E93", font: { size: 10 } }
-            },
-            y: { 
-              grid: { color: "rgba(255, 255, 255, 0.05)" },
-              ticks: { color: "#8E8E93", font: { size: 10 } }
-            }
+            x: { grid: { color: "rgba(255, 255, 255, 0.05)" }, ticks: { color: "#8E8E93", font: { size: 10 } } },
+            y: { grid: { color: "rgba(255, 255, 255, 0.05)" }, ticks: { color: "#8E8E93", font: { size: 10 } } }
           }
         }
       });
     }
 
-    // Gestione Tab
-    function switchTab(tab) {
-      ["workout", "history", "stats"].forEach(t => {
-        document.getElementById(`tab-${t}`).classList.add("hidden");
-        const navBtn = document.getElementById(`nav-${t}`);
+    // ============================ Tab Schede ============================
+    const loadRoutines = guard(async () => {
+      routines = await api("/api/routines");
+      renderRoutines();
+    });
+
+    function renderRoutines() {
+      const container = $("routines-list");
+      if (!routines.length) {
+        container.innerHTML = "<p class='text-zinc-500 text-xs'>Nessuna scheda: creane una o importa un file CSV.</p>";
+        return;
+      }
+      container.innerHTML = routines.map(r => `
+        <div class="card space-y-2">
+          <div class="flex justify-between items-start gap-3">
+            <div class="min-w-0">
+              <span class="font-bold text-white text-base block">${esc(r.name)}</span>
+              <span class="text-[11px] text-zinc-400">${r.exercises.length} esercizi</span>
+            </div>
+            <div class="flex gap-2 shrink-0">
+              <button onclick="openRoutineEditor(${Number(r.id)})" class="btn-secondary">Modifica</button>
+              <button onclick="deleteRoutine(${Number(r.id)})" class="text-xs text-red-400/80 font-semibold px-3 py-2 bg-red-500/10 rounded-xl">Elimina</button>
+            </div>
+          </div>
+          <div class="text-[11px] text-zinc-500 leading-relaxed">${esc(r.exercises.map(e => e.name).join(" · "))}</div>
+        </div>
+      `).join("");
+    }
+
+    function closeModal(id) { $(id).classList.add("hidden"); }
+
+    function openRoutineEditor(id) {
+      editingRoutineId = id;
+      const routine = id === null ? null : routines.find(r => r.id === id);
+      $("ed-title").textContent = routine ? "Modifica scheda" : "Nuova scheda";
+      $("ed-name").value = routine ? routine.name : "";
+      $("ed-notes").value = routine ? routine.notes : "";
+      editorExercises = routine
+        ? routine.exercises.map(e => ({ name: e.name, muscle_group: e.muscle_group, note: e.note }))
+        : [{ name: "", muscle_group: "", note: "" }];
+      renderEditorExercises();
+      $("routine-modal").classList.remove("hidden");
+    }
+
+    function renderEditorExercises() {
+      const groupOptions = (selected) =>
+        `<option value=""${selected === "" ? " selected" : ""}>Gruppo: auto</option>` +
+        appConfig.muscle_groups.map(g => `<option value="${esc(g)}"${g === selected ? " selected" : ""}>${esc(g)}</option>`).join("");
+
+      $("ed-exercises").innerHTML = editorExercises.map((ex, i) => `
+        <div class="bg-[#2C2C2E]/60 border border-white/5 rounded-2xl p-3 space-y-2">
+          <input class="field" style="padding:10px 12px; font-size:15px" placeholder="Nome esercizio" maxlength="60"
+                 value="${esc(ex.name)}" oninput="editorExercises[${i}].name = this.value" />
+          <div class="flex gap-2">
+            <select class="field" style="padding:10px 12px; font-size:14px" onchange="editorExercises[${i}].muscle_group = this.value">${groupOptions(ex.muscle_group || "")}</select>
+            <input class="field" style="padding:10px 12px; font-size:14px" placeholder="Nota (es. 3x8)" maxlength="120"
+                   value="${esc(ex.note)}" oninput="editorExercises[${i}].note = this.value" />
+          </div>
+          <div class="flex gap-2 justify-end">
+            <button class="btn-secondary" onclick="moveEditorExercise(${i}, -1)">↑</button>
+            <button class="btn-secondary" onclick="moveEditorExercise(${i}, 1)">↓</button>
+            <button class="btn-secondary" style="color:#f87171" onclick="removeEditorExercise(${i})">Rimuovi</button>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function addEditorExercise() {
+      editorExercises.push({ name: "", muscle_group: "", note: "" });
+      renderEditorExercises();
+    }
+
+    function moveEditorExercise(i, delta) {
+      const j = i + delta;
+      if (j < 0 || j >= editorExercises.length) return;
+      [editorExercises[i], editorExercises[j]] = [editorExercises[j], editorExercises[i]];
+      renderEditorExercises();
+    }
+
+    function removeEditorExercise(i) {
+      editorExercises.splice(i, 1);
+      renderEditorExercises();
+    }
+
+    const saveRoutine = guard(async () => {
+      const exercises = editorExercises
+        .map(e => ({ name: e.name.trim(), muscle_group: e.muscle_group || null, note: (e.note || "").trim() }))
+        .filter(e => e.name);
+      const payload = { name: $("ed-name").value.trim(), notes: $("ed-notes").value.trim(), exercises };
+      if (!payload.name) return toast("Dai un nome alla scheda.");
+      if (!exercises.length) return toast("Aggiungi almeno un esercizio.");
+
+      if (editingRoutineId === null) await post("/api/routines", payload);
+      else await api(`/api/routines/${editingRoutineId}`, { method: "PUT", body: JSON.stringify(payload) });
+
+      closeModal("routine-modal");
+      await loadRoutines();
+      toast("Scheda salvata.", "ok");
+    });
+
+    const deleteRoutine = guard(async (id) => {
+      const routine = routines.find(r => r.id === id);
+      if (!confirm(`Eliminare la scheda «${routine ? routine.name : ""}»? Gli allenamenti già registrati restano nello storico.`)) return;
+      await api(`/api/routines/${id}`, { method: "DELETE" });
+      await loadRoutines();
+    });
+
+    const addTemplate = guard(async () => {
+      const res = await post("/api/routines/template");
+      await loadRoutines();
+      toast(res.created.length ? `Aggiunte: ${res.created.join(", ")}` : "Le schede di esempio sono già presenti.", "ok");
+      if (currentTab === "workout") await refreshActiveWorkout();
+    });
+
+    // Importazione CSV
+    const CSV_TEMPLATE = [
+      "scheda,esercizio,gruppo,note",
+      "Push,Panca,Petto,6 rep + 2 back off",
+      "Push,Alzate laterali,Spalle,3x12",
+      "Pull,Trazioni,Dorso,3xmax",
+      "Pull,Curl manubri,Braccia,3x10",
+      "Legs,Squat,Gambe,5x5"
+    ].join("\n");
+
+    function openImport() {
+      $("import-text").value = "";
+      $("import-file").value = "";
+      $("import-modal").classList.remove("hidden");
+    }
+
+    function fillImportTemplate() { $("import-text").value = CSV_TEMPLATE; }
+
+    const loadImportFile = guard(async (input) => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      if (file.size > 200000) return toast("Il file è troppo grande.");
+      $("import-text").value = await file.text();
+    });
+
+    const importRoutines = guard(async () => {
+      const csv = $("import-text").value;
+      if (!csv.trim()) return toast("Incolla un CSV o scegli un file.");
+      const res = await post("/api/routines/import", { csv });
+      closeModal("import-modal");
+      await loadRoutines();
+      const parts = [];
+      if (res.created.length) parts.push(`create: ${res.created.join(", ")}`);
+      if (res.updated.length) parts.push(`aggiornate: ${res.updated.join(", ")}`);
+      toast(`Importazione completata (${parts.join("; ")}).`, "ok");
+    });
+
+    // ============================ Tab Account ============================
+    function renderAccount() {
+      if (!me) return;
+      $("acc-email").textContent = me.email;
+      const verified = $("acc-verified");
+      verified.textContent = me.email_verified ? "✓ Email verificata" : "Email non ancora verificata";
+      verified.className = "text-xs " + (me.email_verified ? "text-emerald-400" : "text-amber-300");
+      $("acc-resend").classList.toggle("hidden", me.email_verified);
+      $("acc-marketing").checked = !!me.marketing_opt_in;
+    }
+
+    const toggleMarketing = guard(async (checked) => {
+      try {
+        const res = await api("/api/auth/me", { method: "PATCH", body: JSON.stringify({ marketing_opt_in: checked }) });
+        me = res;
+        toast(checked ? "Riceverai le novità via email." : "Non riceverai più email di novità.", "ok");
+      } catch (e) {
+        renderAccount(); // ripristina lo stato reale della casella
+        throw e;
+      }
+    });
+
+    const resendVerification = guard(async () => {
+      const res = await post("/api/auth/resend-verification");
+      toast(res.status === "already_verified" ? "Email già verificata." : "Email di verifica inviata: controlla la posta.", "ok");
+    });
+
+    const changePassword = guard(async () => {
+      await post("/api/auth/change-password", {
+        current_password: $("cp-current").value, new_password: $("cp-new").value
+      });
+      $("cp-current").value = "";
+      $("cp-new").value = "";
+      toast("Password aggiornata. Le altre sessioni sono state chiuse.", "ok");
+    });
+
+    const exportData = guard(async () => {
+      const data = await api("/api/auth/export");
+      $("export-text").value = JSON.stringify(data, null, 2);
+      $("export-modal").classList.remove("hidden");
+    });
+
+    const copyExport = guard(async () => {
+      const el = $("export-text");
+      try { await navigator.clipboard.writeText(el.value); }
+      catch (e) { el.select(); document.execCommand("copy"); }
+      toast("Copiato negli appunti.", "ok");
+    });
+
+    const logout = guard(async () => {
+      try { await post("/api/auth/logout"); } catch (e) { /* la sessione locale va chiusa comunque */ }
+      forceLogout();
+    });
+
+    const deleteAccount = guard(async () => {
+      if (!confirm("Eliminare DEFINITIVAMENTE il tuo account e tutti i tuoi dati? Non si può annullare.")) return;
+      await post("/api/auth/delete-account", { password: $("del-password").value });
+      $("del-password").value = "";
+      forceLogout();
+      toast("Account eliminato.", "ok");
+    });
+
+    // ============================ Navigazione ============================
+    async function switchTab(tab) {
+      currentTab = tab;
+      ["workout", "history", "stats", "routines", "account"].forEach(t => {
+        $(`tab-${t}`).classList.add("hidden");
+        const navBtn = $(`nav-${t}`);
         navBtn.classList.remove("text-[#0A84FF]");
         navBtn.classList.add("text-zinc-500");
       });
 
-      document.getElementById(`tab-${tab}`).classList.remove("hidden");
-      const activeNavBtn = document.getElementById(`nav-${tab}`);
+      $(`tab-${tab}`).classList.remove("hidden");
+      const activeNavBtn = $(`nav-${tab}`);
       activeNavBtn.classList.remove("text-zinc-500");
       activeNavBtn.classList.add("text-[#0A84FF]");
+      window.scrollTo(0, 0);
 
-      if (tab === "workout") refreshActiveWorkout();
-      if (tab === "history") loadHistory();
-      if (tab === "stats") {
-        loadExerciseList();
-        loadWeeklyVolume();
+      if (tab === "workout") await guard(refreshActiveWorkout)();
+      if (tab === "history") await loadHistory();
+      if (tab === "stats") { loadExerciseList(); loadWeeklyVolume(); }
+      if (tab === "routines") await loadRoutines();
+      if (tab === "account") {
+        // Aggiorna il profilo: l'email potrebbe essere stata verificata da un altro dispositivo
+        try { me = await api("/api/auth/me"); } catch (e) { if (e.silent) return; }
+        renderAccount();
       }
     }
 
     // Registrazione Service Worker per supporto offline
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/static/sw.js").catch(err => {
+        // Registrato dalla radice (rotta /sw.js): da /static/ non controllerebbe la pagina "/"
+        navigator.serviceWorker.register("/sw.js").catch(err => {
           console.warn("ServiceWorker non attivo (richiede HTTPS):", err);
         });
       });
     }
 
-    init();
+    boot();
   </script>
 </body>
 </html>
