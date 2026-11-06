@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from src import body as body_store
 from src import config, emailer
 from src import routines as routine_store
 from src import users as user_store
@@ -30,10 +31,13 @@ from src.database import (
     delete_workout,
     end_active_workout,
     get_active_workout,
+    MAX_PLAUSIBLE_WORKOUT_SECONDS,
     get_distinct_logged_exercises,
     get_exercise_progression,
     get_last_exercise_performance,
     get_recent_workouts,
+    get_muscle_volume,
+    get_period_summary,
     get_weekly_muscle_volume,
     get_workout_details,
     get_workout_summary,
@@ -182,6 +186,11 @@ class SetEditReq(BaseModel):
     weight: float = Field(default=0.0, ge=0, le=1000)
     reps: int = Field(default=0, ge=0, le=1000)
     duration: int | None = Field(default=None, ge=1, le=86400)
+
+
+class BodyWeightReq(BaseModel):
+    weight_kg: float = Field(ge=20, le=400)
+    date: str | None = Field(default=None, max_length=10)   # AAAA-MM-GG; vuoto = oggi
 
 
 class NotesReq(BaseModel):
@@ -489,10 +498,7 @@ def api_delete_routine(routine_id: int, user: dict = Depends(get_current_user)):
 
 # --- Allenamenti -------------------------------------------------------------------
 # Un allenamento "dimenticato aperto" viene chiuso quando se ne avvia un altro: la sua durata
-# sarebbe di ore o giorni senza significato. Oltre questa soglia la durata non viene mostrata.
-MAX_PLAUSIBLE_WORKOUT_SECONDS = 12 * 3600
-
-
+# sarebbe di ore o giorni senza significato. Oltre la soglia (MAX_PLAUSIBLE_WORKOUT_SECONDS) non viene mostrata.
 def _plausible_duration(seconds):
     if seconds is None or seconds < 0 or seconds > MAX_PLAUSIBLE_WORKOUT_SECONDS:
         return None
@@ -632,6 +638,27 @@ def api_delete_set(set_id: int, user: dict = Depends(get_current_user)):
     return {"status": "deleted"}
 
 
+# --- Peso corporeo -----------------------------------------------------------------
+@app.get("/api/body-weight")
+def api_list_body_weight(user: dict = Depends(get_current_user)):
+    return body_store.list_weights(user["id"])
+
+
+@app.post("/api/body-weight")
+def api_save_body_weight(req: BodyWeightReq, user: dict = Depends(get_current_user)):
+    try:
+        return body_store.save_weight(user["id"], req.weight_kg, req.date)
+    except body_store.BodyWeightError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@app.delete("/api/body-weight/{measured_on}")
+def api_delete_body_weight(measured_on: str, user: dict = Depends(get_current_user)):
+    if not body_store.delete_weight(user["id"], measured_on):
+        raise HTTPException(status_code=404, detail="Misurazione non trovata")
+    return {"status": "deleted"}
+
+
 # 1. ROTTE STATICHE: devono precedere tassativamente quella con {exercise}
 @app.get("/api/analytics/exercises")
 def api_distinct_exercises(user: dict = Depends(get_current_user)):
@@ -642,6 +669,23 @@ def api_distinct_exercises(user: dict = Depends(get_current_user)):
 @app.get("/api/analytics/weekly-volume")
 def api_weekly_volume(user: dict = Depends(get_current_user)):
     return get_weekly_muscle_volume(user["id"])
+
+
+# Serie per gruppo muscolare negli ultimi N giorni (equilibrio muscolare)
+@app.get("/api/analytics/muscle-volume")
+def api_muscle_volume(days: int = Query(default=30, ge=1, le=365), user: dict = Depends(get_current_user)):
+    return {"days": days, "sets": get_muscle_volume(user["id"], days)}
+
+
+# Confronto tra gli ultimi N giorni e gli N giorni precedenti
+@app.get("/api/analytics/compare")
+def api_compare_periods(days: int = Query(default=28, ge=1, le=365), user: dict = Depends(get_current_user)):
+    uid = user["id"]
+    return {
+        "days": days,
+        "current": {**get_period_summary(uid, days), "muscles": get_muscle_volume(uid, days)},
+        "previous": {**get_period_summary(uid, days, offset_days=days), "muscles": get_muscle_volume(uid, days, offset_days=days)},
+    }
 
 
 # Dati completi per il grafico (1RM, Volume, Max Weight)

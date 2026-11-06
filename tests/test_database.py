@@ -10,6 +10,8 @@ from src.database import (
     get_connection,
     get_distinct_logged_exercises,
     get_exercise_progression,
+    get_muscle_volume,
+    get_period_summary,
     get_last_exercise_performance,
     get_recent_workouts,
     get_weekly_muscle_volume,
@@ -277,3 +279,64 @@ def test_duration_unknown_for_unfinished_in_history_query(make_user):
     with get_connection() as conn:
         conn.execute("UPDATE workouts SET is_active = 0 WHERE id = ?", (w,))   # chiuso senza orario di fine
     assert get_recent_workouts(uid)[0][7] is None
+
+
+# --- Periodi: equilibrio muscolare e confronti ------------------------------------
+
+def _finished_days_ago(uid, days_ago, exercise="Panca", sets=3, weight=100, reps=5, minutes=60):
+    w = start_new_workout(uid, "Push")
+    log_sets_batch(uid, w, exercise, [{"weight": weight, "reps": reps, "duration": None}] * sets)
+    end_active_workout(uid, w)
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE workouts SET start_time = datetime('now', ?), end_time = datetime('now', ?) WHERE id = ?",
+            (f"-{days_ago} days", f"-{days_ago} days", w)
+        )
+        conn.execute("UPDATE workouts SET end_time = datetime(start_time, ?) WHERE id = ?", (f"+{minutes} minutes", w))
+    return w
+
+
+def test_muscle_volume_windows(make_user):
+    uid = make_user()
+    _finished_days_ago(uid, 2)      # dentro 7 giorni
+    _finished_days_ago(uid, 10)     # dentro 30, non dentro 7
+    _finished_days_ago(uid, 40)     # dentro 90
+    assert get_muscle_volume(uid, 7)["Petto"] == 3
+    assert get_muscle_volume(uid, 30)["Petto"] == 6
+    assert get_muscle_volume(uid, 90)["Petto"] == 9
+    assert get_muscle_volume(uid, 7, offset_days=7)["Petto"] == 3    # 7-14 giorni fa: il workout di 10 giorni fa
+    assert set(get_muscle_volume(uid, 7)) >= {"Petto", "Dorso", "Gambe", "Spalle", "Braccia", "Addome", "Altro"}
+
+
+def test_active_workouts_not_counted_in_period_stats(make_user):
+    uid = make_user()
+    w = start_new_workout(uid, "Push")
+    log_sets_batch(uid, w, "Panca", [{"weight": 100, "reps": 5, "duration": None}])
+    assert get_muscle_volume(uid, 7)["Petto"] == 0
+    assert get_period_summary(uid, 7)["workouts"] == 0
+
+
+def test_period_summary_values(make_user):
+    uid = make_user()
+    _finished_days_ago(uid, 1, sets=3, weight=100, reps=5, minutes=60)    # volume 1500, 3 serie
+    _finished_days_ago(uid, 3, sets=2, weight=50, reps=10, minutes=30)    # volume 1000, 2 serie
+    summary = get_period_summary(uid, 7)
+    assert summary == {"workouts": 2, "training_days": 2, "duration_seconds": 5400, "sets": 5, "volume": 2500.0}
+
+
+def test_period_summary_previous_window_and_isolation(make_user):
+    a, b = make_user(), make_user()
+    _finished_days_ago(a, 2)
+    _finished_days_ago(a, 9)
+    _finished_days_ago(b, 2)
+    assert get_period_summary(a, 7)["workouts"] == 1
+    assert get_period_summary(a, 7, offset_days=7)["workouts"] == 1
+    assert get_period_summary(a, 14)["workouts"] == 2
+    assert get_period_summary(b, 7)["workouts"] == 1
+
+
+def test_forgotten_open_workout_does_not_inflate_duration(make_user):
+    uid = make_user()
+    _finished_days_ago(uid, 1, minutes=45)
+    _finished_days_ago(uid, 2, minutes=60 * 30)      # 30 ore: chiuso automaticamente dal successivo
+    assert get_period_summary(uid, 7)["duration_seconds"] == 45 * 60

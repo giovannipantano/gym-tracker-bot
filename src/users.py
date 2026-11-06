@@ -208,6 +208,7 @@ def delete_user(user_id: int) -> bool:
             (user_id,)
         )
         cursor.execute("DELETE FROM routines WHERE user_id = ?", (user_id,))
+        cursor.execute("DELETE FROM body_weights WHERE user_id = ?", (user_id,))
         cursor.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
         cursor.execute("DELETE FROM email_tokens WHERE user_id = ?", (user_id,))
         cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
@@ -218,6 +219,9 @@ def export_user_data(user_id: int) -> dict:
     """Tutti i dati dell'utente in un formato leggibile (portabilità dei dati)."""
     user = get_user(user_id)
     with get_connection() as conn:
+        body_rows = conn.execute(
+            "SELECT measured_on, weight_kg FROM body_weights WHERE user_id = ? ORDER BY measured_on", (user_id,)
+        ).fetchall()
         workouts = []
         for w_id, start, end, split, active, notes in conn.execute(
             "SELECT id, start_time, end_time, split_name, is_active, notes FROM workouts WHERE user_id = ? ORDER BY id",
@@ -251,6 +255,10 @@ def export_user_data(user_id: int) -> dict:
             for r in list_routines(user_id)
         ],
         "workouts": workouts,
+        "body_weights": [
+            {"date": r[0], "weight_kg": r[1]}
+            for r in body_rows
+        ],
     }
 
 

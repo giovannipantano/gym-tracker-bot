@@ -342,3 +342,66 @@ def test_other_user_cannot_touch_my_sets_or_notes(client):
     assert client.delete(f"/api/sets/{set_id}", headers=b).status_code == 404
     assert client.put(f"/api/workouts/{wid}/notes", headers=b, json={"notes": "x"}).status_code == 404
     assert client.get("/api/workout/active", headers=a).json()["sets"][0]["reps"] == 8
+
+
+def test_body_weight_endpoints(client, logged):
+    assert client.get("/api/body-weight", headers=logged).json() == []
+    assert client.post("/api/body-weight", headers=logged, json={"weight_kg": 80.26, "date": "2026-01-10"}).json() == {"date": "2026-01-10", "weight_kg": 80.3}
+    assert client.post("/api/body-weight", headers=logged, json={"weight_kg": 79.0, "date": "2026-01-10"}).status_code == 200   # sostituisce
+    assert client.post("/api/body-weight", headers=logged, json={"weight_kg": 78.0}).status_code == 200                           # oggi
+    data = client.get("/api/body-weight", headers=logged).json()
+    assert [d["weight_kg"] for d in data] == [79.0, 78.0]
+    assert client.post("/api/body-weight", headers=logged, json={"weight_kg": 5}).status_code == 422
+    assert client.post("/api/body-weight", headers=logged, json={"weight_kg": 80, "date": "ieri"}).status_code == 422
+    assert client.post("/api/body-weight", headers=logged, json={"weight_kg": 80, "date": "2999-01-01"}).status_code == 422
+    assert client.delete("/api/body-weight/2026-01-10", headers=logged).status_code == 200
+    assert client.delete("/api/body-weight/2026-01-10", headers=logged).status_code == 404
+
+
+def test_body_weight_is_private_and_needs_login(client):
+    a = auth(register(client, "a@example.com").json()["token"])
+    b = auth(register(client, "b@example.com").json()["token"])
+    client.post("/api/body-weight", headers=a, json={"weight_kg": 80, "date": "2026-01-10"})
+    assert client.get("/api/body-weight", headers=b).json() == []
+    assert client.delete("/api/body-weight/2026-01-10", headers=b).status_code == 404
+    assert client.get("/api/body-weight").status_code == 401
+    assert client.post("/api/body-weight", json={"weight_kg": 80}).status_code == 401
+
+
+def _done_workout(client, h, exercise="Panca", reps=5):
+    client.post("/api/workout/start", headers=h, json={"routine_id": None})
+    client.post("/api/workout/sets", headers=h, json={"exercise": exercise, "sets": [{"weight": 100, "reps": reps}] * 3})
+    client.post("/api/workout/end", headers=h)
+
+
+def test_muscle_volume_endpoint(client, logged):
+    _done_workout(client, logged)
+    data = client.get("/api/analytics/muscle-volume?days=30", headers=logged).json()
+    assert data["days"] == 30 and data["sets"]["Petto"] == 3 and data["sets"]["Gambe"] == 0
+    assert client.get("/api/analytics/muscle-volume", headers=logged).json()["days"] == 30      # default
+    assert client.get("/api/analytics/muscle-volume?days=0", headers=logged).status_code == 422
+    assert client.get("/api/analytics/muscle-volume?days=1000", headers=logged).status_code == 422
+
+
+def test_compare_endpoint(client, logged):
+    from src.database import get_connection
+    _done_workout(client, logged)                      # oggi: periodo corrente
+    _done_workout(client, logged, "Squat", reps=8)     # lo spostiamo nel periodo precedente
+    with get_connection() as conn:
+        wid = conn.execute("SELECT MAX(id) FROM workouts").fetchone()[0]
+        conn.execute("UPDATE workouts SET start_time = datetime('now', '-10 days'), end_time = datetime('now', '-10 days', '+1 hour') WHERE id = ?", (wid,))
+    data = client.get("/api/analytics/compare?days=7", headers=logged).json()
+    assert data["days"] == 7
+    assert data["current"]["workouts"] == 1 and data["previous"]["workouts"] == 1
+    assert data["current"]["sets"] == 3 and data["current"]["volume"] == 1500.0
+    assert data["previous"]["volume"] == 2400.0 and data["previous"]["duration_seconds"] == 3600
+    assert data["current"]["muscles"]["Petto"] == 3 and data["previous"]["muscles"]["Gambe"] == 3
+    assert client.get("/api/analytics/compare?days=0", headers=logged).status_code == 422
+
+
+def test_compare_is_private(client):
+    a = auth(register(client, "a@example.com").json()["token"])
+    b = auth(register(client, "b@example.com").json()["token"])
+    _done_workout(client, a)
+    data = client.get("/api/analytics/compare?days=7", headers=b).json()
+    assert data["current"]["workouts"] == 0 and data["current"]["muscles"]["Petto"] == 0

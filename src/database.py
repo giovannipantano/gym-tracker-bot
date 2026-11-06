@@ -114,6 +114,18 @@ def init_db():
             );
         """)
 
+        # --- Peso corporeo (una misurazione al giorno per utente) -------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS body_weights (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                measured_on TEXT NOT NULL,
+                weight_kg REAL NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (user_id, measured_on)
+            );
+        """)
+
         # Migrazioni automatiche per database creati dalle versioni precedenti.
         # Le righe esistenti restano con user_id NULL (invisibili a tutti) finché non vengono
         # assegnate a un account con scripts/claim_legacy_data.py.
@@ -394,10 +406,11 @@ def get_exercise_progression(user_id: int, exercise_name: str):
         return cursor.fetchall()
 
 
-def get_weekly_muscle_volume(user_id: int) -> dict[str, int]:
+def get_muscle_volume(user_id: int, days: int = 7, offset_days: int = 0) -> dict[str, int]:
     """
-    Serie completate negli ultimi 7 giorni per gruppo muscolare. Usa il gruppo scelto dall'utente
-    nelle proprie schede; per gli esercizi liberi ricade sul riconoscimento dal nome.
+    Serie completate per gruppo muscolare nella finestra (adesso - offset - days, adesso - offset].
+    Con offset_days = days si ottiene il periodo immediatamente precedente (per i confronti).
+    Usa il gruppo scelto dall'utente nelle proprie schede; per gli esercizi liberi ricade sul nome.
     """
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -406,10 +419,11 @@ def get_weekly_muscle_volume(user_id: int) -> dict[str, int]:
             FROM sets s
             JOIN workouts w ON s.workout_id = w.id
             WHERE w.user_id = ?
-              AND w.start_time >= datetime('now', '-7 days')
+              AND w.start_time > datetime('now', ?)
+              AND w.start_time <= datetime('now', ?)
               AND w.is_active = 0
             GROUP BY s.exercise_name
-        """, (user_id,))
+        """, (user_id, f"-{int(days) + int(offset_days)} days", f"-{int(offset_days)} days"))
         rows = cursor.fetchall()
 
         cursor.execute("""
@@ -427,6 +441,45 @@ def get_weekly_muscle_volume(user_id: int) -> dict[str, int]:
             group = "Altro"
         summary[group] += count
     return summary
+
+
+def get_weekly_muscle_volume(user_id: int) -> dict[str, int]:
+    """Serie degli ultimi 7 giorni per gruppo muscolare."""
+    return get_muscle_volume(user_id, 7)
+
+
+# Una durata oltre questa soglia indica un allenamento dimenticato aperto: non va sommata
+MAX_PLAUSIBLE_WORKOUT_SECONDS = 12 * 3600
+
+
+def get_period_summary(user_id: int, days: int, offset_days: int = 0) -> dict:
+    """Totali degli allenamenti conclusi nella finestra (adesso - offset - days, adesso - offset]."""
+    with get_connection() as conn:
+        row = conn.execute("""
+            SELECT COUNT(*), COUNT(DISTINCT date(w.start_time)),
+                   COALESCE(SUM(CASE WHEN dur BETWEEN 0 AND ? THEN dur END), 0)
+            FROM (
+                SELECT w.id, w.start_time,
+                       CAST(strftime('%s', w.end_time) AS INTEGER) - CAST(strftime('%s', w.start_time) AS INTEGER) AS dur
+                FROM workouts w
+                WHERE w.user_id = ? AND w.is_active = 0
+                  AND w.start_time > datetime('now', ?) AND w.start_time <= datetime('now', ?)
+            ) w
+        """, (MAX_PLAUSIBLE_WORKOUT_SECONDS, user_id,
+              f"-{int(days) + int(offset_days)} days", f"-{int(offset_days)} days")).fetchone()
+        sets_row = conn.execute("""
+            SELECT COUNT(s.id), COALESCE(SUM(s.weight * s.reps), 0)
+            FROM sets s JOIN workouts w ON s.workout_id = w.id
+            WHERE w.user_id = ? AND w.is_active = 0
+              AND w.start_time > datetime('now', ?) AND w.start_time <= datetime('now', ?)
+        """, (user_id, f"-{int(days) + int(offset_days)} days", f"-{int(offset_days)} days")).fetchone()
+    return {
+        "workouts": row[0],
+        "training_days": row[1],
+        "duration_seconds": row[2],
+        "sets": sets_row[0],
+        "volume": round(sets_row[1], 1),
+    }
 
 
 def get_distinct_logged_exercises(user_id: int) -> list[str]:
