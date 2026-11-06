@@ -252,7 +252,8 @@ def get_workout_summary(user_id: int, workout_id: int):
         return cursor.fetchall()
 
 
-def get_recent_workouts(user_id: int, limit: int = 10):
+def get_recent_workouts(user_id: int, limit: int = 10, offset: int = 0):
+    """Allenamenti terminati, dal più recente. `offset` permette di scorrere la cronologia a pagine."""
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -264,9 +265,9 @@ def get_recent_workouts(user_id: int, limit: int = 10):
             LEFT JOIN sets s ON w.id = s.workout_id
             WHERE w.user_id = ? AND w.is_active = 0
             GROUP BY w.id
-            ORDER BY w.start_time DESC
-            LIMIT ?
-        """, (user_id, limit))
+            ORDER BY w.start_time DESC, w.id DESC
+            LIMIT ? OFFSET ?
+        """, (user_id, limit, offset))
         return cursor.fetchall()
 
 

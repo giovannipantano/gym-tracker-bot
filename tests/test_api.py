@@ -203,7 +203,7 @@ def test_full_workout_flow(client, logged):
     assert client.delete("/api/workout/sets/last", headers=logged).status_code == 200
     assert client.post("/api/workout/sets", headers=logged, json={"exercise": "Panca", "sets": [{"weight": 85, "reps": 5}]}).status_code == 200
     assert client.post("/api/workout/end", headers=logged).status_code == 200
-    hist = client.get("/api/workouts/history", headers=logged).json()
+    hist = client.get("/api/workouts/history", headers=logged).json()["items"]
     assert len(hist) == 1 and hist[0]["split"] == "Push"
     assert client.get("/api/analytics/exercises", headers=logged).json() == ["Panca"]
     assert len(client.get("/api/analytics/Panca", headers=logged).json()) == 1
@@ -231,15 +231,15 @@ def test_two_users_are_isolated(client):
     client.post("/api/workout/start", headers=a, json={"routine_id": rid})
     client.post("/api/workout/sets", headers=a, json={"exercise": "Panca", "sets": [{"weight": 80, "reps": 8}]})
     client.post("/api/workout/end", headers=a)
-    wid = client.get("/api/workouts/history", headers=a).json()[0]["id"]
+    wid = client.get("/api/workouts/history", headers=a).json()["items"][0]["id"]
 
     assert client.get("/api/routines", headers=b).json() == []
-    assert client.get("/api/workouts/history", headers=b).json() == []
+    assert client.get("/api/workouts/history", headers=b).json() == {"items": [], "has_more": False}
     assert client.get("/api/analytics/exercises", headers=b).json() == []
     assert client.delete(f"/api/workouts/{wid}", headers=b).status_code == 404
     assert client.put(f"/api/routines/{rid}", headers=b, json={"name": "H", "notes": "", "exercises": [{"name": "x", "muscle_group": None, "note": ""}]}).status_code == 404
     assert client.post("/api/workout/start", headers=b, json={"routine_id": rid}).status_code == 404
-    assert len(client.get("/api/workouts/history", headers=a).json()) == 1
+    assert len(client.get("/api/workouts/history", headers=a).json()["items"]) == 1
 
 
 def test_static_pages(client):
@@ -251,3 +251,19 @@ def test_static_pages(client):
 
 def test_api_responses_not_cached(client, logged):
     assert "no-store" in client.get("/api/routines", headers=logged).headers.get("cache-control", "")
+
+
+def test_history_paging(client, logged):
+    for i in range(5):
+        client.post("/api/workout/start", headers=logged, json={"routine_id": None})
+        client.post("/api/workout/sets", headers=logged, json={"exercise": f"Es{i}", "sets": [{"weight": 10, "reps": 5}]})
+        client.post("/api/workout/end", headers=logged)
+    page1 = client.get("/api/workouts/history?limit=2", headers=logged).json()
+    page2 = client.get("/api/workouts/history?limit=2&offset=2", headers=logged).json()
+    page3 = client.get("/api/workouts/history?limit=2&offset=4", headers=logged).json()
+    assert [len(p["items"]) for p in (page1, page2, page3)] == [2, 2, 1]
+    assert [p["has_more"] for p in (page1, page2, page3)] == [True, True, False]
+    ids = [w["id"] for p in (page1, page2, page3) for w in p["items"]]
+    assert ids == sorted(ids, reverse=True) and len(set(ids)) == 5   # nessun doppione, dal più recente
+    assert client.get("/api/workouts/history?limit=0", headers=logged).status_code == 422
+    assert client.get("/api/workouts/history?offset=-1", headers=logged).status_code == 422

@@ -540,12 +540,18 @@ def api_end_workout(user: dict = Depends(get_current_user)):
 
 
 @app.get("/api/workouts/history")
-def api_history(user: dict = Depends(get_current_user)):
-    rows = get_recent_workouts(user["id"], limit=10)
-    res = []
-    for r in rows:
+def api_history(
+    limit: int = Query(default=10, ge=1, le=50),
+    offset: int = Query(default=0, ge=0, le=100000),
+    user: dict = Depends(get_current_user),
+):
+    # Si legge un elemento in più solo per sapere se esiste un'altra pagina
+    rows = get_recent_workouts(user["id"], limit=limit + 1, offset=offset)
+    has_more = len(rows) > limit
+    items = []
+    for r in rows[:limit]:
         _, sets = get_workout_details(user["id"], r[0])
-        res.append({
+        items.append({
             "id": r[0],
             "date": r[1][:10],
             "split": r[2],
@@ -554,7 +560,7 @@ def api_history(user: dict = Depends(get_current_user)):
             "volume": r[5],
             "sets": [{"exercise": s[0], "weight": s[2], "reps": s[3], "duration": s[4]} for s in sets]
         })
-    return res
+    return {"items": items, "has_more": has_more}
 
 
 @app.delete("/api/workouts/{workout_id}")

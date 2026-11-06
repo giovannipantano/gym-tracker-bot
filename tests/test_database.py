@@ -177,3 +177,15 @@ def test_migration_from_old_schema(tmp_path, monkeypatch, make_user):
     assert users.claim_legacy_workouts(uid) == 1
     assert len(get_recent_workouts(uid)) == 1
     assert get_workout_details(uid, 1)[1][0][0] == "Panca"
+
+
+def test_recent_workouts_paging_is_stable(make_user):
+    uid = make_user()
+    ids = []
+    for _ in range(5):
+        w = start_new_workout(uid, "Push")
+        log_sets_batch(uid, w, "Panca", [{"weight": 10, "reps": 5, "duration": None}])
+        end_active_workout(uid, w)
+        ids.append(w)
+    seen = [r[0] for off in (0, 2, 4) for r in get_recent_workouts(uid, limit=2, offset=off)]
+    assert seen == sorted(ids, reverse=True)   # stesso secondo di start_time: decide l'id

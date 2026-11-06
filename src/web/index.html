@@ -245,6 +245,7 @@
           <p class="text-xs text-zinc-400 mt-1">Archivio sessioni completate e volumi</p>
         </div>
         <div id="history-list" class="space-y-3"></div>
+        <button id="history-more" class="hidden btn-secondary w-full" onclick="loadMoreHistory()">Carica altri allenamenti</button>
       </section>
 
 
@@ -821,37 +822,48 @@
     });
 
     // ============================ Tab Storico ============================
-    const loadHistory = guard(async () => {
-      const list = await api("/api/workouts/history");
-      const container = $("history-list");
-      if (!list.length) {
-        container.innerHTML = "<p class='text-zinc-500 text-xs'>Nessun workout registrato.</p>";
-        return;
-      }
-      container.innerHTML = list.map(w => {
-        const grouped = {};
-        w.sets.forEach(s => { (grouped[s.exercise] = grouped[s.exercise] || []).push(formatSet(s)); });
-        const details = Object.entries(grouped).map(([ex, s]) => `
-          <div class="text-[11px] text-zinc-400">
-            <span class="text-zinc-300 font-semibold">• ${esc(ex)}:</span> ${esc(s.join(", "))}
-          </div>
-        `).join("");
+    const HISTORY_PAGE = 10;
+    let historyCount = 0;   // quanti allenamenti sono già in lista
 
-        return `
-          <div class="card space-y-3">
-            <div class="flex justify-between items-center">
-              <div>
-                <span class="font-bold text-white text-base block">${esc(w.split)}</span>
-                <span class="text-[11px] text-zinc-400">${esc(w.date)}</span>
-              </div>
-              <button onclick="deleteWorkout(${Number(w.id)})" class="text-xs text-red-400/80 hover:text-red-400 font-semibold px-2 py-1 bg-red-500/10 rounded-lg">Elimina</button>
+    function historyCardHtml(w) {
+      const grouped = {};
+      w.sets.forEach(s => { (grouped[s.exercise] = grouped[s.exercise] || []).push(formatSet(s)); });
+      const details = Object.entries(grouped).map(([ex, s]) => `
+        <div class="text-[11px] text-zinc-400">
+          <span class="text-zinc-300 font-semibold">• ${esc(ex)}:</span> ${esc(s.join(", "))}
+        </div>
+      `).join("");
+
+      return `
+        <div class="card space-y-3">
+          <div class="flex justify-between items-center">
+            <div>
+              <span class="font-bold text-white text-base block">${esc(w.split)}</span>
+              <span class="text-[11px] text-zinc-400">${esc(w.date)}</span>
             </div>
-            <div class="text-xs font-semibold text-blue-400">Volume: ${Math.round(w.volume)} kg (${w.sets_count} serie)</div>
-            <div class="space-y-1.5 pt-2 border-t border-white/5">${details}</div>
+            <button onclick="deleteWorkout(${Number(w.id)})" class="text-xs text-red-400/80 hover:text-red-400 font-semibold px-2 py-1 bg-red-500/10 rounded-lg">Elimina</button>
           </div>
-        `;
-      }).join("");
-    });
+          <div class="text-xs font-semibold text-blue-400">Volume: ${Math.round(w.volume)} kg (${w.sets_count} serie)</div>
+          <div class="space-y-1.5 pt-2 border-t border-white/5">${details}</div>
+        </div>
+      `;
+    }
+
+    // Carica una pagina di cronologia. reset=true riparte dall'inizio (cambio tab, dopo un'eliminazione).
+    async function fetchHistoryPage(reset) {
+      const container = $("history-list");
+      if (reset) { historyCount = 0; container.innerHTML = ""; }
+      const data = await api(`/api/workouts/history?limit=${HISTORY_PAGE}&offset=${historyCount}`);
+      historyCount += data.items.length;
+      container.insertAdjacentHTML("beforeend", data.items.map(historyCardHtml).join(""));
+      if (historyCount === 0) {
+        container.innerHTML = "<p class='text-zinc-500 text-xs'>Nessun workout registrato.</p>";
+      }
+      $("history-more").classList.toggle("hidden", !data.has_more);
+    }
+
+    const loadHistory = guard(() => fetchHistoryPage(true));
+    const loadMoreHistory = guard(() => fetchHistoryPage(false));
 
     const deleteWorkout = guard(async (id) => {
       if (!confirm("Eliminare definitivamente questo allenamento?")) return;
