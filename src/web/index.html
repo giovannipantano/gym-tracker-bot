@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="it" class="dark">
+<html lang="it" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
@@ -7,6 +7,34 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="GymTracker" />
   <meta name="theme-color" content="#000000" />
+  <meta name="color-scheme" content="dark light" />
+  <script>
+    // Tema chiaro/scuro: si applica subito (prima del disegno della pagina) per evitare il lampo di colore sbagliato.
+    // Preferenza salvata: "auto" (segue il telefono), "light" o "dark".
+    (function () {
+      var pref = "auto";
+      try { pref = localStorage.getItem("gym_theme") || "auto"; } catch (e) {}
+      if (pref !== "light" && pref !== "dark") pref = "auto";
+      var mq = window.matchMedia ? window.matchMedia("(prefers-color-scheme: light)") : null;
+      function resolved() { return pref === "auto" ? (mq && mq.matches ? "light" : "dark") : pref; }
+      function apply() {
+        var t = resolved();
+        document.documentElement.setAttribute("data-theme", t);
+        var m = document.querySelector('meta[name="theme-color"]');
+        if (m) m.setAttribute("content", t === "light" ? "#F2F2F7" : "#000000");
+        window.dispatchEvent(new CustomEvent("themechange", { detail: t }));
+      }
+      window.getThemePreference = function () { return pref; };
+      window.setThemePreference = function (p) {
+        pref = (p === "light" || p === "dark") ? p : "auto";
+        try { localStorage.setItem("gym_theme", pref); } catch (e) {}
+        apply();
+      };
+      if (mq) { var onChange = function () { if (pref === "auto") apply(); };
+                if (mq.addEventListener) mq.addEventListener("change", onChange); else if (mq.addListener) mq.addListener(onChange); }
+      apply();
+    })();
+  </script>
   <link rel="manifest" href="/static/manifest.json" />
   <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png" />
   <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png" />
@@ -35,49 +63,103 @@
     /* body è select-none: i campi di testo devono comunque restare selezionabili/digitabili su iOS */
     input, textarea, select { -webkit-user-select: text; user-select: text; }
 
+    /* ===== Colori del tema: valori scuri (predefiniti) e chiari ===== */
+    :root {
+      --bg: #000000; --surface: #1C1C1E; --surface-2: #2C2C2E;
+      --surface-2-70: rgba(44,44,46,.7); --surface-2-60: rgba(44,44,46,.6); --surface-2-50: rgba(44,44,46,.5);
+      --fg: #ffffff; --fg-2: #e4e4e7; --fg-3: #d4d4d8; --muted: #a1a1aa; --faint: #71717a;
+      --line: rgba(255,255,255,.08); --soft: rgba(255,255,255,.05); --mid: rgba(255,255,255,.10);
+      --field-border: rgba(255,255,255,.06);
+      --accent: #60a5fa; --brand: #0A84FF; --danger: #f87171; --danger-soft: rgba(248,113,113,.8);
+      --warn: #fcd34d; --good: #34d399;
+      --nav-bg: rgba(0,0,0,.8);
+      --seg-bg: rgba(118,118,128,.24); --seg-on: #636366;
+      --chart-grid: rgba(255,255,255,.05); --chart-tick: #8E8E93; --chart-legend: #E5E5EA;
+      color-scheme: dark;
+    }
+    html[data-theme="light"] {
+      --bg: #F2F2F7; --surface: #FFFFFF; --surface-2: #EFEFF4;
+      --surface-2-70: rgba(239,239,244,.7); --surface-2-60: rgba(239,239,244,.6); --surface-2-50: rgba(239,239,244,.5);
+      --fg: #000000; --fg-2: #1c1c1e; --fg-3: #3a3a3c; --muted: #6c6c70; --faint: #8e8e93;
+      --line: rgba(0,0,0,.09); --soft: rgba(0,0,0,.06); --mid: rgba(0,0,0,.10);
+      --field-border: rgba(0,0,0,.10);
+      --accent: #0a63c9; --brand: #007AFF; --danger: #d70015; --danger-soft: rgba(215,0,21,.8);
+      --warn: #b25000; --good: #1e8e3e;
+      --nav-bg: rgba(249,249,249,.88);
+      --seg-bg: rgba(118,118,128,.12); --seg-on: #FFFFFF;
+      --chart-grid: rgba(0,0,0,.06); --chart-tick: #6c6c70; --chart-legend: #1c1c1e;
+      color-scheme: light;
+    }
+    body { background: var(--bg); color: var(--fg); }
+
+    /* Nomi dei colori usati nel markup (al posto dei colori scuri scritti direttamente) */
+    .bg-app { background-color: var(--bg); }
+    .bg-surface { background-color: var(--surface); }
+    .bg-surface-2 { background-color: var(--surface-2); }
+    .bg-surface-2-70 { background-color: var(--surface-2-70); }
+    .bg-surface-2-60 { background-color: var(--surface-2-60); }
+    .bg-surface-2-50 { background-color: var(--surface-2-50); }
+    .bg-nav { background-color: var(--nav-bg); }
+    .text-fg { color: var(--fg); } .text-fg-2 { color: var(--fg-2); } .text-fg-3 { color: var(--fg-3); }
+    .text-muted { color: var(--muted); } .text-faint { color: var(--faint); }
+    .text-accent { color: var(--accent); } .text-brand { color: var(--brand); }
+    .text-danger { color: var(--danger); } .text-danger-soft { color: var(--danger-soft); }
+    .text-warn { color: var(--warn); } .text-good { color: var(--good); }
+    .border-line { border-color: var(--line); } .border-soft { border-color: var(--soft); } .border-mid { border-color: var(--mid); }
+    .ph-faint::placeholder { color: var(--faint); }
+
+    /* Selettori a scelta singola (stile iOS) */
+    .seg { background: var(--seg-bg); }
+    .seg-on { background: var(--seg-on); color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+
+    /* Fascia dietro la barra di stato: su iPhone (app installata) il testo della barra è sempre bianco,
+       quindi lì lo sfondo resta scuro anche nel tema chiaro. In un normale browser l'altezza è 0. */
+    #status-cap { position: fixed; top: 0; left: 0; right: 0; height: env(safe-area-inset-top); background: #000; z-index: 200; pointer-events: none; }
+
     /* Componenti riusati nelle schermate di accesso, editor schede e account */
     .field {
-      width: 100%; background: #2C2C2E; border: 1px solid rgba(255,255,255,0.06); border-radius: 16px;
-      padding: 12px 14px; color: #fff; font-size: 16px; outline: none;
+      width: 100%; background: var(--surface-2); border: 1px solid var(--field-border); border-radius: 16px;
+      padding: 12px 14px; color: var(--fg); font-size: 16px; outline: none;
     }
     .field:focus { border-color: #0A84FF; }
-    .field::placeholder { color: #71717a; }
+    .field::placeholder { color: var(--faint); }
     .btn-primary {
       width: 100%; background: #0A84FF; color: #fff; font-weight: 700; font-size: 15px;
       border-radius: 16px; padding: 14px; transition: transform .1s;
     }
     .btn-primary:active { transform: scale(0.98); background: #0070e0; }
     .btn-secondary {
-      background: #2C2C2E; color: #e4e4e7; font-weight: 600; font-size: 13px;
-      border-radius: 14px; padding: 10px 14px; border: 1px solid rgba(255,255,255,0.08);
+      background: var(--surface-2); color: var(--fg-2); font-weight: 600; font-size: 13px;
+      border-radius: 14px; padding: 10px 14px; border: 1px solid var(--line);
     }
     .btn-secondary:active { transform: scale(0.97); }
     .btn-danger {
-      width: 100%; background: rgba(239,68,68,0.15); color: #f87171; font-weight: 700; font-size: 14px;
+      width: 100%; background: rgba(239,68,68,0.15); color: var(--danger); font-weight: 700; font-size: 14px;
       border-radius: 16px; padding: 12px;
     }
-    .link { color: #0A84FF; font-weight: 600; font-size: 13px; }
-    .card { background: #1C1C1E; border: 1px solid rgba(255,255,255,0.08); border-radius: 24px; padding: 16px; }
-    .label { display: block; font-size: 11px; font-weight: 700; color: #a1a1aa; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
+    .link { color: var(--brand); font-weight: 600; font-size: 13px; }
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: 24px; padding: 16px; }
+    .label { display: block; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
   </style>
 </head>
-<body class="bg-black text-white min-h-screen select-none">
+<body class="bg-app text-fg min-h-screen select-none">
+  <div id="status-cap" aria-hidden="true"></div>
 
   <!-- Notifiche a comparsa -->
   <div id="toast" class="hidden"></div>
 
   <!-- ==================== OFFLINE ==================== -->
-  <div id="offline-view" class="hidden fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-8 text-center space-y-4">
+  <div id="offline-view" class="hidden fixed inset-0 z-50 bg-app flex flex-col items-center justify-center p-8 text-center space-y-4">
     <p class="text-lg font-bold">Sei offline</p>
-    <p class="text-sm text-zinc-400">Per usare Gym Tracker serve una connessione. Riprova quando torni online.</p>
+    <p class="text-sm text-muted">Per usare Gym Tracker serve una connessione. Riprova quando torni online.</p>
     <button onclick="boot()" class="btn-primary" style="max-width: 220px">Riprova</button>
   </div>
 
   <!-- ==================== ACCESSO / REGISTRAZIONE ==================== -->
-  <div id="auth-screen" class="hidden fixed inset-0 z-40 bg-black overflow-y-auto px-5" style="padding-top: calc(env(safe-area-inset-top) + 2rem); padding-bottom: 3rem;">
+  <div id="auth-screen" class="hidden fixed inset-0 z-40 bg-app overflow-y-auto px-5" style="padding-top: calc(env(safe-area-inset-top) + 2rem); padding-bottom: 3rem;">
     <div class="max-w-sm mx-auto space-y-6">
       <div class="flex flex-col items-center space-y-3 pt-4">
-        <div class="w-14 h-14 rounded-2xl bg-blue-500/20 flex items-center justify-center text-blue-400">
+        <div class="w-14 h-14 rounded-2xl bg-blue-500/20 flex items-center justify-center text-accent">
           <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
           </svg>
@@ -108,11 +190,11 @@
           <input id="reg-password" class="field" type="password" autocomplete="new-password" minlength="8" required /></div>
         <div id="reg-invite-wrap" class="hidden"><label class="label" for="reg-invite">Codice di invito</label>
           <input id="reg-invite" class="field" type="text" autocomplete="off" autocapitalize="none" /></div>
-        <label class="flex items-start gap-3 text-sm text-zinc-300">
+        <label class="flex items-start gap-3 text-sm text-fg-3">
           <input id="reg-marketing" type="checkbox" class="mt-1 w-5 h-5 accent-blue-500" />
-          <span>Voglio ricevere novità e aggiornamenti sull'app via email <span class="text-zinc-500">(facoltativo)</span></span>
+          <span>Voglio ricevere novità e aggiornamenti sull'app via email <span class="text-faint">(facoltativo)</span></span>
         </label>
-        <p class="text-xs text-zinc-500">Creando l'account accetti l'<a href="/privacy" class="underline text-zinc-300">informativa sulla privacy</a>.</p>
+        <p class="text-xs text-faint">Creando l'account accetti l'<a href="/privacy" class="underline text-fg-3">informativa sulla privacy</a>.</p>
         <button type="submit" class="btn-primary">Crea account</button>
         <button type="button" class="link" onclick="showAuth('login')">Ho già un account</button>
       </form>
@@ -120,7 +202,7 @@
       <!-- Password dimenticata -->
       <form id="auth-forgot" class="hidden space-y-4" onsubmit="event.preventDefault(); doForgot();">
         <h2 class="text-lg font-bold">Password dimenticata</h2>
-        <p class="text-sm text-zinc-400">Inserisci la tua email: ti invieremo un link per sceglierne una nuova.</p>
+        <p class="text-sm text-muted">Inserisci la tua email: ti invieremo un link per sceglierne una nuova.</p>
         <div><label class="label" for="forgot-email">Email</label>
           <input id="forgot-email" class="field" type="email" autocomplete="email" inputmode="email" autocapitalize="none" required /></div>
         <button type="submit" class="btn-primary">Invia il link</button>
@@ -138,7 +220,7 @@
       <!-- Messaggio generico -->
       <div id="auth-info" class="hidden space-y-4">
         <h2 id="info-title" class="text-lg font-bold"></h2>
-        <p id="info-text" class="text-sm text-zinc-400"></p>
+        <p id="info-text" class="text-sm text-muted"></p>
         <button class="btn-primary" onclick="showAuth('login')">Vai all'accesso</button>
       </div>
     </div>
@@ -146,13 +228,13 @@
 
   <!-- ==================== APP ==================== -->
   <div id="app" class="hidden">
-    <header class="sticky top-0 z-30 bg-black/75 backdrop-blur-xl border-b border-white/[0.08] px-5 py-3.5 flex items-center space-x-2">
-      <div class="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400">
+    <header style="top: env(safe-area-inset-top)" class="sticky z-30 bg-nav backdrop-blur-xl border-b border-line px-5 py-3.5 flex items-center space-x-2">
+      <div class="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-accent">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
         </svg>
       </div>
-      <h1 class="text-xl font-bold tracking-tight text-white">Gym Tracker</h1>
+      <h1 class="text-xl font-bold tracking-tight text-fg">Gym Tracker</h1>
     </header>
 
     <main class="p-4 max-w-lg mx-auto space-y-5">
@@ -163,12 +245,12 @@
         <!-- Nessun workout attivo -->
         <div id="no-workout-view" class="hidden space-y-4 pt-2">
           <div>
-            <h2 class="text-2xl font-bold tracking-tight text-white">Inizia Sessione</h2>
-            <p class="text-xs text-zinc-400 mt-1">Scegli una scheda o allenati liberamente</p>
+            <h2 class="text-2xl font-bold tracking-tight text-fg">Inizia Sessione</h2>
+            <p class="text-xs text-muted mt-1">Scegli una scheda o allenati liberamente</p>
           </div>
           <div id="no-routines-card" class="hidden card space-y-3">
-            <p class="text-sm font-semibold text-zinc-200">Non hai ancora una scheda</p>
-            <p class="text-xs text-zinc-400">Creane una tua, importala da un file CSV oppure parti dalle schede di esempio. Puoi comunque allenarti subito con l'allenamento libero.</p>
+            <p class="text-sm font-semibold text-fg-2">Non hai ancora una scheda</p>
+            <p class="text-xs text-muted">Creane una tua, importala da un file CSV oppure parti dalle schede di esempio. Puoi comunque allenarti subito con l'allenamento libero.</p>
             <div class="flex gap-2">
               <button class="btn-secondary flex-1" onclick="switchTab('routines')">Vai alle schede</button>
               <button class="btn-secondary flex-1" onclick="addTemplate()">Usa esempi</button>
@@ -183,16 +265,16 @@
           <div class="card space-y-3">
             <div class="flex justify-between items-center">
               <div class="flex items-center gap-2">
-                <span id="active-split-badge" class="bg-blue-500/20 text-blue-400 text-[11px] font-bold px-3 py-1 rounded-full uppercase tracking-wider"></span>
-                <span class="text-xs font-semibold text-zinc-400 tabular-nums">⏱ <span id="active-timer">00:00</span></span>
+                <span id="active-split-badge" class="bg-blue-500/20 text-accent text-[11px] font-bold px-3 py-1 rounded-full uppercase tracking-wider"></span>
+                <span class="text-xs font-semibold text-muted tabular-nums">⏱ <span id="active-timer">00:00</span></span>
               </div>
-              <button onclick="endWorkout()" class="bg-red-500/15 hover:bg-red-500/25 active:scale-95 text-red-400 text-xs font-semibold px-3 py-1.5 rounded-full transition">Termina</button>
+              <button onclick="endWorkout()" class="bg-red-500/15 hover:bg-red-500/25 active:scale-95 text-danger text-xs font-semibold px-3 py-1.5 rounded-full transition">Termina</button>
             </div>
-            <div id="routine-reminder" class="text-xs text-zinc-300 leading-relaxed bg-[#2C2C2E]/60 p-3 rounded-2xl border border-white/5 space-y-1"></div>
+            <div id="routine-reminder" class="text-xs text-fg-3 leading-relaxed bg-surface-2-60 p-3 rounded-2xl border border-soft space-y-1"></div>
           </div>
 
           <div class="space-y-2">
-            <label class="text-[11px] text-zinc-400 uppercase font-bold tracking-wider px-1">Seleziona Esercizio</label>
+            <label class="text-[11px] text-muted uppercase font-bold tracking-wider px-1">Seleziona Esercizio</label>
             <div id="exercise-buttons" class="flex flex-wrap gap-2"></div>
             <div class="flex gap-2 pt-1">
               <input id="custom-exercise" list="exercise-suggestions" class="field" style="padding: 10px 12px; font-size: 14px;" placeholder="Altro esercizio…" maxlength="100" onfocus="loadExerciseSuggestions()" />
@@ -203,30 +285,30 @@
 
           <div class="card space-y-3">
             <div class="flex justify-between items-center px-1">
-              <span class="text-xs font-semibold text-zinc-400">Target</span>
-              <span class="text-xs font-bold text-blue-400" id="selected-ex-label">Nessun esercizio selezionato</span>
+              <span class="text-xs font-semibold text-muted">Target</span>
+              <span class="text-xs font-bold text-accent" id="selected-ex-label">Nessun esercizio selezionato</span>
             </div>
 
-            <div id="prev-perf-banner" class="hidden bg-[#2C2C2E]/70 border border-white/10 rounded-2xl p-3 space-y-1 transition-all">
+            <div id="prev-perf-banner" class="hidden bg-surface-2-70 border border-mid rounded-2xl p-3 space-y-1 transition-all">
               <div class="flex justify-between text-[11px]">
-                <span class="text-zinc-400 uppercase font-semibold tracking-wider">Ultima prestazione</span>
-                <span id="prev-perf-date" class="text-zinc-400 font-medium"></span>
+                <span class="text-muted uppercase font-semibold tracking-wider">Ultima prestazione</span>
+                <span id="prev-perf-date" class="text-muted font-medium"></span>
               </div>
-              <div id="prev-perf-sets" class="text-xs font-semibold text-amber-300 tracking-wide"></div>
+              <div id="prev-perf-sets" class="text-xs font-semibold text-warn tracking-wide"></div>
             </div>
 
             <div class="grid grid-cols-2 gap-3">
-              <div class="bg-[#2C2C2E] p-2.5 rounded-2xl border border-white/5 focus-within:border-blue-500 transition">
-                <label class="block text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-1">Peso (kg)</label>
-                <input id="inp-weight" type="number" step="0.5" min="0" placeholder="0 (libero)" class="w-full bg-transparent text-lg font-bold text-white placeholder-zinc-600 focus:outline-none" />
+              <div class="bg-surface-2 p-2.5 rounded-2xl border border-soft focus-within:border-blue-500 transition">
+                <label class="block text-[10px] uppercase font-bold text-muted tracking-wider mb-1">Peso (kg)</label>
+                <input id="inp-weight" type="number" step="0.5" min="0" placeholder="0 (libero)" class="w-full bg-transparent text-lg font-bold text-fg ph-faint focus:outline-none" />
               </div>
-              <div class="bg-[#2C2C2E] p-2.5 rounded-2xl border border-white/5 focus-within:border-blue-500 transition">
-                <label class="block text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-1">Reps o Secondi</label>
-                <input id="inp-reps" type="text" placeholder="es. 8,8,6 o 60s" class="w-full bg-transparent text-lg font-bold text-white placeholder-zinc-600 focus:outline-none" />
+              <div class="bg-surface-2 p-2.5 rounded-2xl border border-soft focus-within:border-blue-500 transition">
+                <label class="block text-[10px] uppercase font-bold text-muted tracking-wider mb-1">Reps o Secondi</label>
+                <input id="inp-reps" type="text" placeholder="es. 8,8,6 o 60s" class="w-full bg-transparent text-lg font-bold text-fg ph-faint focus:outline-none" />
               </div>
             </div>
 
-            <button onclick="submitSets()" class="w-full bg-[#0A84FF] active:bg-blue-600 active:scale-[0.98] py-3.5 rounded-2xl font-bold text-sm text-white shadow-lg shadow-blue-500/20 transition flex items-center justify-center space-x-2">
+            <button onclick="submitSets()" class="w-full bg-[#0A84FF] active:bg-blue-600 active:scale-[0.98] py-3.5 rounded-2xl font-bold text-sm text-fg shadow-lg shadow-blue-500/20 transition flex items-center justify-center space-x-2">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
               </svg>
@@ -236,11 +318,11 @@
 
           <div class="card space-y-3">
             <div class="flex justify-between items-center px-1">
-              <h3 class="text-xs font-bold text-zinc-300 uppercase tracking-wider">Log Allenamento Odierno</h3>
-              <button onclick="undoLast()" class="text-xs font-semibold text-red-400 hover:text-red-300 active:scale-95 transition">↩️ Annulla Ultimo</button>
+              <h3 class="text-xs font-bold text-fg-3 uppercase tracking-wider">Log Allenamento Odierno</h3>
+              <button onclick="undoLast()" class="text-xs font-semibold text-danger hover:text-red-300 active:scale-95 transition">↩️ Annulla Ultimo</button>
             </div>
-            <div id="current-sets-list" class="text-xs text-zinc-400 space-y-2"></div>
-            <p class="text-[10px] text-zinc-500 px-1">Tocca una serie per correggerla o eliminarla.</p>
+            <div id="current-sets-list" class="text-xs text-muted space-y-2"></div>
+            <p class="text-[10px] text-faint px-1">Tocca una serie per correggerla o eliminarla.</p>
           </div>
 
           <div class="card space-y-2">
@@ -255,8 +337,8 @@
       <!-- ==================== TAB 2: STORICO ==================== -->
       <section id="tab-history" class="hidden space-y-4">
         <div>
-          <h2 class="text-2xl font-bold tracking-tight text-white">Cronologia</h2>
-          <p class="text-xs text-zinc-400 mt-1">Archivio sessioni completate e volumi</p>
+          <h2 class="text-2xl font-bold tracking-tight text-fg">Cronologia</h2>
+          <p class="text-xs text-muted mt-1">Archivio sessioni completate e volumi</p>
         </div>
         <div id="history-list" class="space-y-3"></div>
         <button id="history-more" class="hidden btn-secondary w-full" onclick="loadMoreHistory()">Carica altri allenamenti</button>
@@ -266,38 +348,38 @@
       <!-- ==================== TAB 3: ANALYTICS & 1RM ==================== -->
       <section id="tab-stats" class="hidden space-y-5">
         <div>
-          <h2 class="text-2xl font-bold tracking-tight text-white">Metriche & Progressi</h2>
-          <p class="text-xs text-zinc-400 mt-1">Equilibrio muscolare, confronti, sovraccarichi e peso corporeo</p>
+          <h2 class="text-2xl font-bold tracking-tight text-fg">Metriche & Progressi</h2>
+          <p class="text-xs text-muted mt-1">Equilibrio muscolare, confronti, sovraccarichi e peso corporeo</p>
         </div>
 
-        <div id="stats-views" class="flex bg-[#1C1C1E] p-1 rounded-2xl border border-white/[0.08] text-xs"></div>
+        <div id="stats-views" class="seg flex p-1 rounded-2xl text-xs"></div>
 
         <!-- Vista 1: panoramica -->
         <div id="stats-overview" class="space-y-5">
           <div class="card space-y-3">
             <div class="flex justify-between items-center gap-2">
               <span class="label" style="margin:0">Equilibrio muscolare</span>
-              <div id="balance-periods" class="flex bg-[#2C2C2E] p-0.5 rounded-xl text-[11px]"></div>
+              <div id="balance-periods" class="seg flex p-0.5 rounded-xl text-[11px]"></div>
             </div>
             <div id="balance-bars" class="space-y-2"></div>
-            <p id="balance-note" class="text-[10px] text-zinc-500"></p>
+            <p id="balance-note" class="text-[10px] text-faint"></p>
           </div>
 
         <div class="space-y-3">
           <div class="flex gap-2">
-            <select id="stat-ex-select" class="flex-1 bg-[#1C1C1E] border border-white/[0.08] rounded-2xl p-3 text-xs font-medium text-white focus:outline-none focus:border-blue-500">
+            <select id="stat-ex-select" class="flex-1 bg-surface border border-line rounded-2xl p-3 text-xs font-medium text-fg focus:outline-none focus:border-blue-500">
               <option value="">Seleziona un esercizio...</option>
             </select>
-            <button onclick="loadChartFromSelect()" class="bg-[#0A84FF] active:bg-blue-600 px-5 rounded-2xl font-bold text-xs text-white transition active:scale-95">Mostra</button>
+            <button onclick="loadChartFromSelect()" class="bg-[#0A84FF] active:bg-blue-600 px-5 rounded-2xl font-bold text-xs text-fg transition active:scale-95">Mostra</button>
           </div>
 
-          <div class="flex bg-[#1C1C1E] p-1 rounded-2xl border border-white/[0.08] text-xs">
-            <button onclick="setChartMetric('1rm')" id="btn-m-1rm" class="flex-1 py-1.5 rounded-xl font-bold bg-[#2C2C2E] text-white shadow-sm transition">1RM</button>
-            <button onclick="setChartMetric('volume')" id="btn-m-volume" class="flex-1 py-1.5 rounded-xl font-medium text-zinc-400 transition">Volume (kg)</button>
-            <button onclick="setChartMetric('max_weight')" id="btn-m-max_weight" class="flex-1 py-1.5 rounded-xl font-medium text-zinc-400 transition">Max Peso</button>
+          <div class="seg flex p-1 rounded-2xl text-xs">
+            <button onclick="setChartMetric('1rm')" id="btn-m-1rm" class="flex-1 py-1.5 rounded-xl font-bold seg-on transition">1RM</button>
+            <button onclick="setChartMetric('volume')" id="btn-m-volume" class="flex-1 py-1.5 rounded-xl font-medium text-muted transition">Volume (kg)</button>
+            <button onclick="setChartMetric('max_weight')" id="btn-m-max_weight" class="flex-1 py-1.5 rounded-xl font-medium text-muted transition">Max Peso</button>
           </div>
 
-          <div class="bg-[#1C1C1E] p-4 rounded-3xl border border-white/[0.08]">
+          <div class="bg-surface p-4 rounded-3xl border border-line">
             <canvas id="progressionChart" height="230"></canvas>
           </div>
         </div>
@@ -308,9 +390,9 @@
           <div class="card space-y-3">
             <div class="flex justify-between items-center gap-2">
               <span class="label" style="margin:0">Confronto</span>
-              <div id="compare-periods" class="flex bg-[#2C2C2E] p-0.5 rounded-xl text-[11px]"></div>
+              <div id="compare-periods" class="seg flex p-0.5 rounded-xl text-[11px]"></div>
             </div>
-            <p id="compare-caption" class="text-[11px] text-zinc-400"></p>
+            <p id="compare-caption" class="text-[11px] text-muted"></p>
             <div id="compare-table" class="space-y-1.5"></div>
           </div>
         </div>
@@ -324,7 +406,7 @@
               <input id="bw-input" type="text" inputmode="decimal" autocomplete="off" placeholder="kg" class="field" style="width:84px; padding:10px 12px; font-size:15px" aria-label="Peso in kg" />
               <button class="btn-primary" style="width:auto; padding:11px 16px" onclick="saveBodyWeight()">Salva</button>
             </div>
-            <div id="bw-summary" class="text-xs text-zinc-400"></div>
+            <div id="bw-summary" class="text-xs text-muted"></div>
             <div id="bw-chart-wrap" style="position:relative; height:220px"><canvas id="weightChart"></canvas></div>
             <div id="bw-list" class="space-y-1"></div>
           </div>
@@ -335,8 +417,8 @@
       <!-- ==================== TAB 4: SCHEDE ==================== -->
       <section id="tab-routines" class="hidden space-y-4">
         <div>
-          <h2 class="text-2xl font-bold tracking-tight text-white">Le tue schede</h2>
-          <p class="text-xs text-zinc-400 mt-1">Crea, modifica o importa i tuoi programmi di allenamento</p>
+          <h2 class="text-2xl font-bold tracking-tight text-fg">Le tue schede</h2>
+          <p class="text-xs text-muted mt-1">Crea, modifica o importa i tuoi programmi di allenamento</p>
         </div>
         <div class="flex gap-2">
           <button class="btn-primary" style="flex: 1" onclick="openRoutineEditor(null)">+ Nuova scheda</button>
@@ -350,7 +432,7 @@
       <!-- ==================== TAB 5: ACCOUNT ==================== -->
       <section id="tab-account" class="hidden space-y-4">
         <div>
-          <h2 class="text-2xl font-bold tracking-tight text-white">Account</h2>
+          <h2 class="text-2xl font-bold tracking-tight text-fg">Account</h2>
         </div>
 
         <div class="card space-y-1">
@@ -361,11 +443,17 @@
         </div>
 
         <div class="card space-y-2">
-          <label class="flex items-start gap-3 text-sm text-zinc-200">
+          <span class="label">Aspetto</span>
+          <div id="theme-control" class="seg flex p-1 rounded-2xl text-xs"></div>
+          <p class="text-xs text-faint">«Automatico» segue l'impostazione chiaro/scuro del telefono.</p>
+        </div>
+
+        <div class="card space-y-2">
+          <label class="flex items-start gap-3 text-sm text-fg-2">
             <input id="acc-marketing" type="checkbox" class="mt-1 w-5 h-5 accent-blue-500" onchange="toggleMarketing(this.checked)" />
             <span>Voglio ricevere novità e aggiornamenti sull'app via email</span>
           </label>
-          <p class="text-xs text-zinc-500">Puoi cambiare idea quando vuoi. Ogni email di novità contiene anche un link per disiscriversi.</p>
+          <p class="text-xs text-faint">Puoi cambiare idea quando vuoi. Ogni email di novità contiene anche un link per disiscriversi.</p>
         </div>
 
         <form class="card space-y-3" onsubmit="event.preventDefault(); changePassword();">
@@ -378,14 +466,14 @@
         <div class="card space-y-3">
           <span class="label">I tuoi dati</span>
           <button class="btn-secondary w-full" onclick="exportData()">Scarica una copia dei miei dati</button>
-          <p class="text-xs text-zinc-500">Consulta l'<a href="/privacy" class="underline text-zinc-300">informativa sulla privacy</a>.</p>
+          <p class="text-xs text-faint">Consulta l'<a href="/privacy" class="underline text-fg-3">informativa sulla privacy</a>.</p>
         </div>
 
         <button class="btn-secondary w-full" onclick="logout()">Esci</button>
 
         <form class="card space-y-3 border-red-500/30" onsubmit="event.preventDefault(); deleteAccount();">
-          <span class="label" style="color:#f87171">Elimina account</span>
-          <p class="text-xs text-zinc-400">Cancella per sempre il tuo account e tutti i tuoi dati: allenamenti, serie e schede. L'operazione non si può annullare.</p>
+          <span class="label" style="color:var(--danger)">Elimina account</span>
+          <p class="text-xs text-muted">Cancella per sempre il tuo account e tutti i tuoi dati: allenamenti, serie e schede. L'operazione non si può annullare.</p>
           <input id="del-password" class="field" type="password" placeholder="Inserisci la password per confermare" autocomplete="current-password" required />
           <button type="submit" class="btn-danger">Elimina definitivamente il mio account</button>
         </form>
@@ -394,24 +482,24 @@
     </main>
 
     <!-- Barra di navigazione inferiore -->
-    <nav class="fixed bottom-0 left-0 right-0 bg-black/80 backdrop-blur-2xl border-t border-white/[0.08] flex justify-around py-2.5 pb-safe z-30">
-      <button onclick="switchTab('workout')" id="nav-workout" class="flex flex-col items-center text-[#0A84FF] transition">
+    <nav class="fixed bottom-0 left-0 right-0 bg-nav backdrop-blur-2xl border-t border-line flex justify-around py-2.5 pb-safe z-30">
+      <button onclick="switchTab('workout')" id="nav-workout" class="flex flex-col items-center text-brand transition">
         <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" /></svg>
         <span class="text-[10px] font-semibold tracking-tight">Workout</span>
       </button>
-      <button onclick="switchTab('history')" id="nav-history" class="flex flex-col items-center text-zinc-500 transition">
+      <button onclick="switchTab('history')" id="nav-history" class="flex flex-col items-center text-faint transition">
         <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
         <span class="text-[10px] font-semibold tracking-tight">Storico</span>
       </button>
-      <button onclick="switchTab('stats')" id="nav-stats" class="flex flex-col items-center text-zinc-500 transition">
+      <button onclick="switchTab('stats')" id="nav-stats" class="flex flex-col items-center text-faint transition">
         <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" /></svg>
         <span class="text-[10px] font-semibold tracking-tight">Progressi</span>
       </button>
-      <button onclick="switchTab('routines')" id="nav-routines" class="flex flex-col items-center text-zinc-500 transition">
+      <button onclick="switchTab('routines')" id="nav-routines" class="flex flex-col items-center text-faint transition">
         <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" /></svg>
         <span class="text-[10px] font-semibold tracking-tight">Schede</span>
       </button>
-      <button onclick="switchTab('account')" id="nav-account" class="flex flex-col items-center text-zinc-500 transition">
+      <button onclick="switchTab('account')" id="nav-account" class="flex flex-col items-center text-faint transition">
         <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17.982 18.725A7.488 7.488 0 0012 15.75a7.488 7.488 0 00-5.982 2.975m11.963 0a9 9 0 10-11.963 0m11.963 0A8.966 8.966 0 0112 21a8.966 8.966 0 01-5.982-2.275M15 9.75a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
         <span class="text-[10px] font-semibold tracking-tight">Account</span>
       </button>
@@ -445,8 +533,8 @@
     <div class="max-w-lg mx-auto p-4" style="padding-top: calc(env(safe-area-inset-top) + 1rem); padding-bottom: 6rem;">
       <div class="card space-y-3">
         <h3 class="text-lg font-bold">Importa schede da CSV</h3>
-        <p class="text-xs text-zinc-400">Una riga per esercizio, con le colonne <b>scheda</b>, <b>esercizio</b> e (facoltative) <b>gruppo</b> e <b>note</b>. Puoi esportarlo da Excel o Fogli Google (separatore virgola o punto e virgola). Se esiste già una scheda con lo stesso nome, i suoi esercizi vengono sostituiti.</p>
-        <input id="import-file" type="file" accept=".csv,text/csv,text/plain" class="text-xs text-zinc-400" onchange="loadImportFile(this)" />
+        <p class="text-xs text-muted">Una riga per esercizio, con le colonne <b>scheda</b>, <b>esercizio</b> e (facoltative) <b>gruppo</b> e <b>note</b>. Puoi esportarlo da Excel o Fogli Google (separatore virgola o punto e virgola). Se esiste già una scheda con lo stesso nome, i suoi esercizi vengono sostituiti.</p>
+        <input id="import-file" type="file" accept=".csv,text/csv,text/plain" class="text-xs text-muted" onchange="loadImportFile(this)" />
         <textarea id="import-text" class="field" rows="9" placeholder="Incolla qui il contenuto del CSV" style="font-size: 13px; font-family: ui-monospace, monospace;"></textarea>
         <button class="btn-secondary w-full" onclick="fillImportTemplate()">Inserisci un modello di esempio</button>
         <div class="flex gap-2">
@@ -462,7 +550,7 @@
     <div class="max-w-lg mx-auto p-4" style="padding-top: calc(env(safe-area-inset-top) + 1rem); padding-bottom: 6rem;">
       <div class="card space-y-3">
         <h3 class="text-lg font-bold">Modifica serie</h3>
-        <p id="set-ex" class="text-sm text-zinc-400"></p>
+        <p id="set-ex" class="text-sm text-muted"></p>
         <div class="grid grid-cols-3 gap-3">
           <div><label class="label" for="set-weight">Peso (kg)</label>
             <input id="set-weight" class="field" type="number" step="0.5" min="0" inputmode="decimal" /></div>
@@ -471,7 +559,7 @@
           <div><label class="label" for="set-secs">Secondi</label>
             <input id="set-secs" class="field" type="number" min="0" inputmode="numeric" /></div>
         </div>
-        <p class="text-xs text-zinc-500">Per una serie a tempo compila i secondi e lascia vuote le ripetizioni.</p>
+        <p class="text-xs text-faint">Per una serie a tempo compila i secondi e lascia vuote le ripetizioni.</p>
         <div class="flex gap-2">
           <button class="btn-secondary flex-1" onclick="closeModal('set-modal')">Annulla</button>
           <button class="btn-primary" style="flex: 1" onclick="saveSetEdit()">Salva</button>
@@ -500,7 +588,7 @@
     <div class="max-w-lg mx-auto p-4" style="padding-top: calc(env(safe-area-inset-top) + 1rem); padding-bottom: 6rem;">
       <div class="card space-y-3">
         <h3 class="text-lg font-bold">I tuoi dati</h3>
-        <p class="text-xs text-zinc-400">Copia il testo e salvalo dove preferisci (per esempio in Note).</p>
+        <p class="text-xs text-muted">Copia il testo e salvalo dove preferisci (per esempio in Note).</p>
         <textarea id="export-text" class="field" rows="14" readonly style="font-size: 12px; font-family: ui-monospace, monospace;"></textarea>
         <div class="flex gap-2">
           <button class="btn-secondary flex-1" onclick="copyExport()">Copia</button>
@@ -774,7 +862,7 @@
     // Una serie come pulsante: toccandola si apre l'editor
     function setPillHtml(s) {
       setIndex[s.id] = s;
-      return `<button type="button" onclick="openSetEditor(${Number(s.id)})" class="inline-block bg-[#2C2C2E] border border-white/10 rounded-xl px-2.5 py-1 text-[11px] font-semibold text-zinc-200 active:scale-95 transition">${esc(formatSet(s))}</button>`;
+      return `<button type="button" onclick="openSetEditor(${Number(s.id)})" class="inline-block bg-surface-2 border border-mid rounded-xl px-2.5 py-1 text-[11px] font-semibold text-fg-2 active:scale-95 transition">${esc(formatSet(s))}</button>`;
     }
 
     // ============================ Tab Workout ============================
@@ -803,12 +891,12 @@
         grid.innerHTML = "";
         const addButton = (label, sublabel, onClick) => {
           const btn = document.createElement("button");
-          btn.className = "bg-[#1C1C1E] active:scale-[0.97] border border-white/[0.08] p-5 rounded-3xl font-bold text-left text-base text-white transition flex flex-col justify-between h-28 shadow-sm";
+          btn.className = "bg-surface active:scale-[0.97] border border-line p-5 rounded-3xl font-bold text-left text-base text-fg transition flex flex-col justify-between h-28 shadow-sm";
           btn.innerHTML = `
-            <div class="w-7 h-7 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-400">
+            <div class="w-7 h-7 rounded-full bg-blue-500/10 flex items-center justify-center text-accent">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
             </div>
-            <div><span class="block">${esc(label)}</span><span class="block text-[11px] font-medium text-zinc-500">${esc(sublabel)}</span></div>`;
+            <div><span class="block">${esc(label)}</span><span class="block text-[11px] font-medium text-faint">${esc(sublabel)}</span></div>`;
           btn.onclick = onClick;
           grid.appendChild(btn);
         };
@@ -825,7 +913,7 @@
       const exercises = activeData.routine ? activeData.routine.exercises : [];
       if (exercises.length) {
         reminder.innerHTML = exercises.map(e =>
-          `<div><span class="font-semibold text-zinc-200">• ${esc(e.name)}</span>${e.note ? ` <span class="text-zinc-400">— ${esc(e.note)}</span>` : ""}</div>`
+          `<div><span class="font-semibold text-fg-2">• ${esc(e.name)}</span>${e.note ? ` <span class="text-muted">— ${esc(e.note)}</span>` : ""}</div>`
         ).join("");
       } else {
         reminder.textContent = "Allenamento libero: scegli un esercizio qui sotto o scrivine uno tuo.";
@@ -839,12 +927,12 @@
       const list = $("current-sets-list");
       list.innerHTML = Object.keys(grouped).length
         ? Object.entries(grouped).map(([ex, sets]) => `
-            <div class="bg-[#2C2C2E]/50 p-2.5 rounded-2xl border border-white/5">
-              <span class="font-bold text-zinc-200 block mb-1.5">${esc(ex)}</span>
+            <div class="bg-surface-2-50 p-2.5 rounded-2xl border border-soft">
+              <span class="font-bold text-fg-2 block mb-1.5">${esc(ex)}</span>
               <div class="flex flex-wrap gap-1.5">${sets.map(setPillHtml).join("")}</div>
             </div>
           `).join("")
-        : "<div class='text-zinc-500 py-1'>Nessuna serie registrata in questa sessione.</div>";
+        : "<div class='text-faint py-1'>Nessuna serie registrata in questa sessione.</div>";
 
       startTimer(activeData.elapsed_seconds);
       const notesBox = $("workout-notes");
@@ -867,7 +955,7 @@
         b.className = `px-3.5 py-2 rounded-2xl text-xs font-semibold border transition active:scale-95 ${
           isSel
             ? 'bg-[#0A84FF] border-[#0A84FF] text-white shadow-md shadow-blue-500/20'
-            : 'bg-[#1C1C1E] border-white/[0.08] text-zinc-300'
+            : 'bg-surface border-line text-fg-3'
         }`;
         b.textContent = ex;
         b.onclick = () => selectExercise(ex);
@@ -969,28 +1057,28 @@
       const grouped = {};
       w.sets.forEach(s => { (grouped[s.exercise] = grouped[s.exercise] || []).push(s); });
       const details = Object.entries(grouped).map(([ex, sets]) => `
-        <div class="text-[11px] text-zinc-400">
-          <span class="text-zinc-300 font-semibold block mb-1">• ${esc(ex)}</span>
+        <div class="text-[11px] text-muted">
+          <span class="text-fg-3 font-semibold block mb-1">• ${esc(ex)}</span>
           <div class="flex flex-wrap gap-1.5">${sets.map(setPillHtml).join("")}</div>
         </div>
       `).join("");
       const duration = w.duration_seconds ? ` · ⏱ ${fmtDuration(w.duration_seconds)}` : "";
       const notes = w.notes
-        ? `<div class="text-[11px] text-zinc-300 bg-[#2C2C2E]/60 rounded-xl p-2.5 whitespace-pre-wrap">${esc(w.notes)}</div>`
+        ? `<div class="text-[11px] text-fg-3 bg-surface-2-60 rounded-xl p-2.5 whitespace-pre-wrap">${esc(w.notes)}</div>`
         : "";
 
       return `
         <div class="card space-y-3">
           <div class="flex justify-between items-center">
             <div>
-              <span class="font-bold text-white text-base block">${esc(w.split)}</span>
-              <span class="text-[11px] text-zinc-400">${esc(w.date)}${duration}</span>
+              <span class="font-bold text-fg text-base block">${esc(w.split)}</span>
+              <span class="text-[11px] text-muted">${esc(w.date)}${duration}</span>
             </div>
-            <button onclick="deleteWorkout(${Number(w.id)})" class="text-xs text-red-400/80 hover:text-red-400 font-semibold px-2 py-1 bg-red-500/10 rounded-lg">Elimina</button>
+            <button onclick="deleteWorkout(${Number(w.id)})" class="text-xs text-danger-soft hover:text-red-400 font-semibold px-2 py-1 bg-red-500/10 rounded-lg">Elimina</button>
           </div>
-          <div class="text-xs font-semibold text-blue-400">Volume: ${Math.round(w.volume)} kg (${w.sets_count} serie)</div>
+          <div class="text-xs font-semibold text-accent">Volume: ${Math.round(w.volume)} kg (${w.sets_count} serie)</div>
           ${notes}
-          <div class="space-y-2 pt-2 border-t border-white/5">${details}</div>
+          <div class="space-y-2 pt-2 border-t border-soft">${details}</div>
           <button onclick="openNotesEditor(${Number(w.id)})" class="link">${w.notes ? "✎ Modifica nota" : "+ Aggiungi nota"}</button>
         </div>
       `;
@@ -999,7 +1087,7 @@
     function renderHistory() {
       $("history-list").innerHTML = historyItems.length
         ? historyItems.map(historyCardHtml).join("")
-        : "<p class='text-zinc-500 text-xs'>Nessun workout registrato.</p>";
+        : "<p class='text-faint text-xs'>Nessun workout registrato.</p>";
     }
 
     // Carica una pagina di cronologia. reset=true riparte dall'inizio (cambio tab, dopo un'eliminazione).
@@ -1118,8 +1206,8 @@
     // Pulsanti a scelta singola (stessi stili dei selettori già presenti nell'app)
     function segmentedHtml(items, current, handler) {
       return items.map(it => `<button type="button" onclick='${handler}(${JSON.stringify(it.value)})' class="flex-1 px-3 py-1.5 rounded-xl transition ${
-        it.value === current ? "bg-[#2C2C2E] text-white font-bold shadow-sm" : "text-zinc-400 font-medium"
-      }" style="${it.value === current ? "" : "background:transparent"}">${esc(it.label)}</button>`).join("");
+        it.value === current ? "seg-on font-bold" : "text-muted font-medium"
+      }">${esc(it.label)}</button>`).join("");
     }
 
     const STATS_VIEWS = [{ value: "overview", label: "Panoramica" }, { value: "compare", label: "Confronto" }, { value: "body", label: "Peso" }];
@@ -1153,17 +1241,17 @@
       const total = entries.reduce((sum, [, sets]) => sum + sets, 0);
       const max = Math.max(1, ...entries.map(([, sets]) => sets));
       if (total === 0) {
-        $("balance-bars").innerHTML = "<p class='text-zinc-500 text-xs'>Nessuna serie registrata in questo periodo.</p>";
+        $("balance-bars").innerHTML = "<p class='text-faint text-xs'>Nessuna serie registrata in questo periodo.</p>";
         $("balance-note").textContent = "";
         return;
       }
       $("balance-bars").innerHTML = entries.map(([group, sets]) => `
         <div class="flex items-center gap-2 text-xs">
-          <span class="w-16 shrink-0 font-semibold ${sets === 0 ? "text-amber-300" : "text-zinc-300"}">${esc(group)}</span>
-          <div class="flex-1 h-2.5 bg-[#2C2C2E] rounded-full overflow-hidden">
+          <span class="w-16 shrink-0 font-semibold ${sets === 0 ? "text-warn" : "text-fg-3"}">${esc(group)}</span>
+          <div class="flex-1 h-2.5 bg-surface-2 rounded-full overflow-hidden">
             <div class="h-full bg-[#0A84FF] rounded-full" style="width:${Math.round(sets / max * 100)}%"></div>
           </div>
-          <span class="w-24 shrink-0 text-right tabular-nums ${sets === 0 ? "text-amber-300" : "text-zinc-400"}">${
+          <span class="w-24 shrink-0 text-right tabular-nums ${sets === 0 ? "text-warn" : "text-muted"}">${
             sets === 0 ? "⚠ nessuna serie" : `${sets} · ${Math.round(sets / total * 100)}%`}</span>
         </div>
       `).join("");
@@ -1175,20 +1263,20 @@
     // ---- Confronto tra periodi ----
     // Variazione percentuale con colore: verde se aumenta, ambra se diminuisce (senza giudicare: uno scarico è voluto)
     function deltaHtml(cur, prev) {
-      if (cur === prev) return "<span class='text-zinc-500'>–</span>";
-      if (prev === 0) return "<span class='text-emerald-400'>nuovo</span>";
+      if (cur === prev) return "<span class='text-faint'>–</span>";
+      if (prev === 0) return "<span class='text-good'>nuovo</span>";
       const pct = Math.round((cur - prev) / prev * 100);
       return cur > prev
-        ? `<span class="text-emerald-400">▲ ${pct}%</span>`
-        : `<span class="text-amber-400">▼ ${Math.abs(pct)}%</span>`;
+        ? `<span class="text-good">▲ ${pct}%</span>`
+        : `<span class="text-warn">▼ ${Math.abs(pct)}%</span>`;
     }
 
     function compareRow(label, cur, prev, format = fmtNum) {
       return `
         <div class="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 items-center text-xs">
-          <span class="text-zinc-300">${esc(label)}</span>
-          <span class="w-16 text-right font-semibold text-white tabular-nums">${esc(format(cur))}</span>
-          <span class="w-16 text-right text-zinc-500 tabular-nums">${esc(format(prev))}</span>
+          <span class="text-fg-3">${esc(label)}</span>
+          <span class="w-16 text-right font-semibold text-fg tabular-nums">${esc(format(cur))}</span>
+          <span class="w-16 text-right text-faint tabular-nums">${esc(format(prev))}</span>
           <span class="w-16 text-right tabular-nums">${deltaHtml(cur, prev)}</span>
         </div>`;
     }
@@ -1201,14 +1289,14 @@
       const c = data.current, p = data.previous;
       $("compare-caption").textContent = `Ultimi ${data.days} giorni rispetto ai ${data.days} giorni precedenti.`;
       const header = `
-        <div class="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 text-[10px] uppercase font-bold text-zinc-500 tracking-wider">
+        <div class="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 text-[10px] uppercase font-bold text-faint tracking-wider">
           <span></span><span class="w-16 text-right">Ora</span><span class="w-16 text-right">Prima</span><span class="w-16 text-right">Var.</span>
         </div>`;
       const muscleRows = Object.keys(c.muscles)
         .filter(g => g !== "Altro" || c.muscles[g] > 0 || p.muscles[g] > 0)
         .map(g => compareRow(g, c.muscles[g], p.muscles[g])).join("");
       if (c.workouts === 0 && p.workouts === 0) {
-        $("compare-table").innerHTML = "<p class='text-zinc-500 text-xs'>Nessun allenamento in questi due periodi.</p>";
+        $("compare-table").innerHTML = "<p class='text-faint text-xs'>Nessun allenamento in questi due periodi.</p>";
         return;
       }
       $("compare-table").innerHTML = header
@@ -1217,7 +1305,7 @@
         + compareRow("Serie", c.sets, p.sets)
         + compareRow("Volume (kg)", c.volume, p.volume)
         + compareRow("Tempo in palestra", c.duration_seconds, p.duration_seconds, fmtMinutes)
-        + `<div class="pt-3 mt-2 border-t border-white/5 text-[10px] uppercase font-bold text-zinc-500 tracking-wider">Serie per gruppo muscolare</div>`
+        + `<div class="pt-3 mt-2 border-t border-soft text-[10px] uppercase font-bold text-faint tracking-wider">Serie per gruppo muscolare</div>`
         + muscleRows;
     });
 
@@ -1252,10 +1340,10 @@
       summary.textContent = text;
 
       $("bw-list").innerHTML = list.slice(-7).reverse().map(w => `
-        <div class="flex justify-between items-center text-xs text-zinc-300 py-1 border-b border-white/5">
+        <div class="flex justify-between items-center text-xs text-fg-3 py-1 border-b border-soft">
           <span>${esc(fmtDateIt(w.date))}</span>
           <span class="flex items-center gap-3"><span class="font-semibold tabular-nums">${esc(fmtNum(w.weight_kg))} kg</span>
-            <button type="button" onclick='deleteBodyWeight(${JSON.stringify(w.date)})' class="text-red-400/80 px-1" aria-label="Elimina misurazione">✕</button></span>
+            <button type="button" onclick='deleteBodyWeight(${JSON.stringify(w.date)})' class="text-danger-soft px-1" aria-label="Elimina misurazione">✕</button></span>
         </div>
       `).join("");
 
@@ -1276,8 +1364,8 @@
           responsive: true, maintainAspectRatio: false,
           plugins: { legend: { display: false } },
           scales: {
-            x: { grid: { color: "rgba(255, 255, 255, 0.05)" }, ticks: { color: "#8E8E93", font: { size: 10 }, maxTicksLimit: 6 } },
-            y: { grid: { color: "rgba(255, 255, 255, 0.05)" }, ticks: { color: "#8E8E93", font: { size: 10 } } }
+            x: { grid: { color: chartColors().grid }, ticks: { color: chartColors().tick, font: { size: 10 }, maxTicksLimit: 6 } },
+            y: { grid: { color: chartColors().grid }, ticks: { color: chartColors().tick, font: { size: 10 } } }
           }
         }
       });
@@ -1302,8 +1390,8 @@
       currentMetric = metric;
       ["1rm", "volume", "max_weight"].forEach(m => {
         $(`btn-m-${m}`).className = m === metric
-          ? "flex-1 py-1.5 rounded-xl font-bold bg-[#2C2C2E] text-white shadow-sm transition"
-          : "flex-1 py-1.5 rounded-xl font-medium text-zinc-500 transition";
+          ? "flex-1 py-1.5 rounded-xl font-bold seg-on transition"
+          : "flex-1 py-1.5 rounded-xl font-medium text-muted transition";
       });
       renderChart();
     }
@@ -1347,10 +1435,10 @@
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          plugins: { legend: { labels: { color: "#E5E5EA", font: { size: 11, weight: 600 } } } },
+          plugins: { legend: { labels: { color: chartColors().legend, font: { size: 11, weight: 600 } } } },
           scales: {
-            x: { grid: { color: "rgba(255, 255, 255, 0.05)" }, ticks: { color: "#8E8E93", font: { size: 10 } } },
-            y: { grid: { color: "rgba(255, 255, 255, 0.05)" }, ticks: { color: "#8E8E93", font: { size: 10 } } }
+            x: { grid: { color: chartColors().grid }, ticks: { color: chartColors().tick, font: { size: 10 } } },
+            y: { grid: { color: chartColors().grid }, ticks: { color: chartColors().tick, font: { size: 10 } } }
           }
         }
       });
@@ -1365,22 +1453,22 @@
     function renderRoutines() {
       const container = $("routines-list");
       if (!routines.length) {
-        container.innerHTML = "<p class='text-zinc-500 text-xs'>Nessuna scheda: creane una o importa un file CSV.</p>";
+        container.innerHTML = "<p class='text-faint text-xs'>Nessuna scheda: creane una o importa un file CSV.</p>";
         return;
       }
       container.innerHTML = routines.map(r => `
         <div class="card space-y-2">
           <div class="flex justify-between items-start gap-3">
             <div class="min-w-0">
-              <span class="font-bold text-white text-base block">${esc(r.name)}</span>
-              <span class="text-[11px] text-zinc-400">${r.exercises.length} esercizi</span>
+              <span class="font-bold text-fg text-base block">${esc(r.name)}</span>
+              <span class="text-[11px] text-muted">${r.exercises.length} esercizi</span>
             </div>
             <div class="flex gap-2 shrink-0">
               <button onclick="openRoutineEditor(${Number(r.id)})" class="btn-secondary">Modifica</button>
-              <button onclick="deleteRoutine(${Number(r.id)})" class="text-xs text-red-400/80 font-semibold px-3 py-2 bg-red-500/10 rounded-xl">Elimina</button>
+              <button onclick="deleteRoutine(${Number(r.id)})" class="text-xs text-danger-soft font-semibold px-3 py-2 bg-red-500/10 rounded-xl">Elimina</button>
             </div>
           </div>
-          <div class="text-[11px] text-zinc-500 leading-relaxed">${esc(r.exercises.map(e => e.name).join(" · "))}</div>
+          <div class="text-[11px] text-faint leading-relaxed">${esc(r.exercises.map(e => e.name).join(" · "))}</div>
         </div>
       `).join("");
     }
@@ -1406,7 +1494,7 @@
         appConfig.muscle_groups.map(g => `<option value="${esc(g)}"${g === selected ? " selected" : ""}>${esc(g)}</option>`).join("");
 
       $("ed-exercises").innerHTML = editorExercises.map((ex, i) => `
-        <div class="bg-[#2C2C2E]/60 border border-white/5 rounded-2xl p-3 space-y-2">
+        <div class="bg-surface-2-60 border border-soft rounded-2xl p-3 space-y-2">
           <input class="field" style="padding:10px 12px; font-size:15px" placeholder="Nome esercizio" maxlength="60"
                  value="${esc(ex.name)}" oninput="editorExercises[${i}].name = this.value" />
           <div class="flex gap-2">
@@ -1417,7 +1505,7 @@
           <div class="flex gap-2 justify-end">
             <button class="btn-secondary" onclick="moveEditorExercise(${i}, -1)">↑</button>
             <button class="btn-secondary" onclick="moveEditorExercise(${i}, 1)">↓</button>
-            <button class="btn-secondary" style="color:#f87171" onclick="removeEditorExercise(${i})">Rimuovi</button>
+            <button class="btn-secondary" style="color:var(--danger)" onclick="removeEditorExercise(${i})">Rimuovi</button>
           </div>
         </div>
       `).join("");
@@ -1507,15 +1595,41 @@
       toast(`Importazione completata (${parts.join("; ")}).`, "ok");
     });
 
+    // Colori dei grafici letti dal tema attivo (variabili CSS)
+    function chartColors() {
+      const cs = getComputedStyle(document.documentElement);
+      const v = (n) => cs.getPropertyValue(n).trim();
+      return { grid: v("--chart-grid"), tick: v("--chart-tick"), legend: v("--chart-legend") };
+    }
+    // Al cambio di tema i grafici già disegnati vengono aggiornati
+    window.addEventListener("themechange", () => {
+      const c = chartColors();
+      [weightChart, chartInstance].filter(Boolean).forEach(ch => {
+        if (!ch || !ch.options) return;
+        ch.options.scales.x.grid.color = c.grid; ch.options.scales.y.grid.color = c.grid;
+        ch.options.scales.x.ticks.color = c.tick; ch.options.scales.y.ticks.color = c.tick;
+        if (ch.options.plugins.legend.labels) ch.options.plugins.legend.labels.color = c.legend;
+        ch.update();
+      });
+      if (typeof renderThemeControl === "function") renderThemeControl();
+    });
+
     // ============================ Tab Account ============================
+    const THEME_OPTIONS = [{ value: "auto", label: "Automatico" }, { value: "light", label: "Chiaro" }, { value: "dark", label: "Scuro" }];
+    function renderThemeControl() {
+      const el = $("theme-control");
+      if (el) el.innerHTML = segmentedHtml(THEME_OPTIONS, window.getThemePreference(), "setTheme");
+    }
+    function setTheme(v) { window.setThemePreference(v); renderThemeControl(); }
     function renderAccount() {
       if (!me) return;
       $("acc-email").textContent = me.email;
       const verified = $("acc-verified");
       verified.textContent = me.email_verified ? "✓ Email verificata" : "Email non ancora verificata";
-      verified.className = "text-xs " + (me.email_verified ? "text-emerald-400" : "text-amber-300");
+      verified.className = "text-xs " + (me.email_verified ? "text-good" : "text-warn");
       $("acc-resend").classList.toggle("hidden", me.email_verified);
       $("acc-marketing").checked = !!me.marketing_opt_in;
+      renderThemeControl();
     }
 
     const toggleMarketing = guard(async (checked) => {
@@ -1575,14 +1689,14 @@
       ["workout", "history", "stats", "routines", "account"].forEach(t => {
         $(`tab-${t}`).classList.add("hidden");
         const navBtn = $(`nav-${t}`);
-        navBtn.classList.remove("text-[#0A84FF]");
-        navBtn.classList.add("text-zinc-500");
+        navBtn.classList.remove("text-brand");
+        navBtn.classList.add("text-faint");
       });
 
       $(`tab-${tab}`).classList.remove("hidden");
       const activeNavBtn = $(`nav-${tab}`);
-      activeNavBtn.classList.remove("text-zinc-500");
-      activeNavBtn.classList.add("text-[#0A84FF]");
+      activeNavBtn.classList.remove("text-faint");
+      activeNavBtn.classList.add("text-brand");
       window.scrollTo(0, 0);
 
       if (tab === "workout") await guard(refreshActiveWorkout)();
