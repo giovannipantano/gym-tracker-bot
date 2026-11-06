@@ -267,13 +267,21 @@
       <section id="tab-stats" class="hidden space-y-5">
         <div>
           <h2 class="text-2xl font-bold tracking-tight text-white">Metriche & Progressi</h2>
-          <p class="text-xs text-zinc-400 mt-1">Volume settimanale ed evoluzione sovraccarichi</p>
+          <p class="text-xs text-zinc-400 mt-1">Equilibrio muscolare, confronti, sovraccarichi e peso corporeo</p>
         </div>
 
-        <div class="card space-y-3">
-          <span class="text-[11px] font-bold text-zinc-400 uppercase tracking-wider block">Volume Ultimi 7 Giorni (Serie Totali)</span>
-          <div id="weekly-volume-grid" class="grid grid-cols-3 gap-2"></div>
-        </div>
+        <div id="stats-views" class="flex bg-[#1C1C1E] p-1 rounded-2xl border border-white/[0.08] text-xs"></div>
+
+        <!-- Vista 1: panoramica -->
+        <div id="stats-overview" class="space-y-5">
+          <div class="card space-y-3">
+            <div class="flex justify-between items-center gap-2">
+              <span class="label" style="margin:0">Equilibrio muscolare</span>
+              <div id="balance-periods" class="flex bg-[#2C2C2E] p-0.5 rounded-xl text-[11px]"></div>
+            </div>
+            <div id="balance-bars" class="space-y-2"></div>
+            <p id="balance-note" class="text-[10px] text-zinc-500"></p>
+          </div>
 
         <div class="space-y-3">
           <div class="flex gap-2">
@@ -291,6 +299,34 @@
 
           <div class="bg-[#1C1C1E] p-4 rounded-3xl border border-white/[0.08]">
             <canvas id="progressionChart" height="230"></canvas>
+          </div>
+        </div>
+        </div>
+
+        <!-- Vista 2: confronto tra periodi -->
+        <div id="stats-compare" class="hidden space-y-5">
+          <div class="card space-y-3">
+            <div class="flex justify-between items-center gap-2">
+              <span class="label" style="margin:0">Confronto</span>
+              <div id="compare-periods" class="flex bg-[#2C2C2E] p-0.5 rounded-xl text-[11px]"></div>
+            </div>
+            <p id="compare-caption" class="text-[11px] text-zinc-400"></p>
+            <div id="compare-table" class="space-y-1.5"></div>
+          </div>
+        </div>
+
+        <!-- Vista 3: peso corporeo -->
+        <div id="stats-body" class="hidden space-y-5">
+          <div class="card space-y-3">
+            <span class="label" style="margin:0">Peso corporeo</span>
+            <div class="flex gap-2 items-center">
+              <input id="bw-date" type="date" class="field" style="flex:1; min-width:0; padding:10px 12px; font-size:14px" aria-label="Data" />
+              <input id="bw-input" type="text" inputmode="decimal" autocomplete="off" placeholder="kg" class="field" style="width:84px; padding:10px 12px; font-size:15px" aria-label="Peso in kg" />
+              <button class="btn-primary" style="width:auto; padding:11px 16px" onclick="saveBodyWeight()">Salva</button>
+            </div>
+            <div id="bw-summary" class="text-xs text-zinc-400"></div>
+            <div id="bw-chart-wrap" style="position:relative; height:220px"><canvas id="weightChart"></canvas></div>
+            <div id="bw-list" class="space-y-1"></div>
           </div>
         </div>
       </section>
@@ -497,6 +533,11 @@
     let editingNotesWorkoutId = null;
     let timerStartMs = null;    // istante (ms) di inizio dell'allenamento in corso
     let timerInterval = null;
+    let statsView = "overview";   // overview | compare | body
+    let balanceDays = 30;
+    let compareDays = 28;
+    let bodyWeights = [];
+    let weightChart = null;
 
     const $ = (id) => document.getElementById(id);
 
@@ -586,6 +627,8 @@
       historyItems = [];
       historyCount = 0;
       stopTimer();
+      bodyWeights = [];
+      if (weightChart) { weightChart.destroy(); weightChart = null; }
       if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
     }
 
@@ -1072,17 +1115,187 @@
       });
     });
 
-    const loadWeeklyVolume = guard(async () => {
-      const data = await api("/api/analytics/weekly-volume");
-      $("weekly-volume-grid").innerHTML = Object.entries(data)
-        .filter(([group, sets]) => group !== "Altro" || sets > 0)
-        .map(([group, sets]) => `
-          <div class="bg-[#2C2C2E]/70 border border-white/5 p-3 rounded-2xl text-center">
-            <span class="text-[10px] uppercase font-bold text-zinc-400 block tracking-wider">${esc(group)}</span>
-            <span class="text-lg font-bold ${sets > 0 ? 'text-[#0A84FF]' : 'text-zinc-600'}">${sets}</span>
-            <span class="text-[9px] text-zinc-500 block">serie</span>
+    // Pulsanti a scelta singola (stessi stili dei selettori già presenti nell'app)
+    function segmentedHtml(items, current, handler) {
+      return items.map(it => `<button type="button" onclick='${handler}(${JSON.stringify(it.value)})' class="flex-1 px-3 py-1.5 rounded-xl transition ${
+        it.value === current ? "bg-[#2C2C2E] text-white font-bold shadow-sm" : "text-zinc-400 font-medium"
+      }" style="${it.value === current ? "" : "background:transparent"}">${esc(it.label)}</button>`).join("");
+    }
+
+    const STATS_VIEWS = [{ value: "overview", label: "Panoramica" }, { value: "compare", label: "Confronto" }, { value: "body", label: "Peso" }];
+    const PERIODS_SHORT = [{ value: 7, label: "7 gg" }, { value: 30, label: "30 gg" }, { value: 90, label: "90 gg" }];
+    const PERIODS_COMPARE = [{ value: 7, label: "7 gg" }, { value: 28, label: "4 sett." }, { value: 90, label: "3 mesi" }];
+
+    async function switchStatsView(view) {
+      statsView = view;
+      $("stats-views").innerHTML = segmentedHtml(STATS_VIEWS, view, "switchStatsView");
+      $("stats-overview").classList.toggle("hidden", view !== "overview");
+      $("stats-compare").classList.toggle("hidden", view !== "compare");
+      $("stats-body").classList.toggle("hidden", view !== "body");
+      if (view === "overview") { loadExerciseList(); await loadMuscleBalance(); }
+      if (view === "compare") await loadCompare();
+      if (view === "body") await loadBodyWeight();
+    }
+
+    function fmtNum(n) { return Number(n).toLocaleString("it-IT", { maximumFractionDigits: 1 }); }
+    function fmtDateIt(iso) { const [y, m, d] = iso.split("-"); return `${d}/${m}/${y}`; }
+    function fmtDateShort(iso) { const [, m, d] = iso.split("-"); return `${d}/${m}`; }
+    function todayLocal() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    }
+
+    // ---- Equilibrio muscolare ----
+    const loadMuscleBalance = guard(async () => {
+      $("balance-periods").innerHTML = segmentedHtml(PERIODS_SHORT, balanceDays, "setBalanceDays");
+      const data = await api(`/api/analytics/muscle-volume?days=${balanceDays}`);
+      const entries = Object.entries(data.sets).filter(([group, sets]) => group !== "Altro" || sets > 0);
+      const total = entries.reduce((sum, [, sets]) => sum + sets, 0);
+      const max = Math.max(1, ...entries.map(([, sets]) => sets));
+      if (total === 0) {
+        $("balance-bars").innerHTML = "<p class='text-zinc-500 text-xs'>Nessuna serie registrata in questo periodo.</p>";
+        $("balance-note").textContent = "";
+        return;
+      }
+      $("balance-bars").innerHTML = entries.map(([group, sets]) => `
+        <div class="flex items-center gap-2 text-xs">
+          <span class="w-16 shrink-0 font-semibold ${sets === 0 ? "text-amber-300" : "text-zinc-300"}">${esc(group)}</span>
+          <div class="flex-1 h-2.5 bg-[#2C2C2E] rounded-full overflow-hidden">
+            <div class="h-full bg-[#0A84FF] rounded-full" style="width:${Math.round(sets / max * 100)}%"></div>
           </div>
-        `).join("");
+          <span class="w-24 shrink-0 text-right tabular-nums ${sets === 0 ? "text-amber-300" : "text-zinc-400"}">${
+            sets === 0 ? "⚠ nessuna serie" : `${sets} · ${Math.round(sets / total * 100)}%`}</span>
+        </div>
+      `).join("");
+      $("balance-note").textContent = `Serie completate negli ultimi ${balanceDays} giorni. I gruppi senza serie sono evidenziati.`;
+    });
+
+    function setBalanceDays(days) { balanceDays = days; loadMuscleBalance(); }
+
+    // ---- Confronto tra periodi ----
+    // Variazione percentuale con colore: verde se aumenta, ambra se diminuisce (senza giudicare: uno scarico è voluto)
+    function deltaHtml(cur, prev) {
+      if (cur === prev) return "<span class='text-zinc-500'>–</span>";
+      if (prev === 0) return "<span class='text-emerald-400'>nuovo</span>";
+      const pct = Math.round((cur - prev) / prev * 100);
+      return cur > prev
+        ? `<span class="text-emerald-400">▲ ${pct}%</span>`
+        : `<span class="text-amber-400">▼ ${Math.abs(pct)}%</span>`;
+    }
+
+    function compareRow(label, cur, prev, format = fmtNum) {
+      return `
+        <div class="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 items-center text-xs">
+          <span class="text-zinc-300">${esc(label)}</span>
+          <span class="w-16 text-right font-semibold text-white tabular-nums">${esc(format(cur))}</span>
+          <span class="w-16 text-right text-zinc-500 tabular-nums">${esc(format(prev))}</span>
+          <span class="w-16 text-right tabular-nums">${deltaHtml(cur, prev)}</span>
+        </div>`;
+    }
+
+    const fmtMinutes = (sec) => sec > 0 ? fmtDuration(sec) : "0";
+
+    const loadCompare = guard(async () => {
+      $("compare-periods").innerHTML = segmentedHtml(PERIODS_COMPARE, compareDays, "setCompareDays");
+      const data = await api(`/api/analytics/compare?days=${compareDays}`);
+      const c = data.current, p = data.previous;
+      $("compare-caption").textContent = `Ultimi ${data.days} giorni rispetto ai ${data.days} giorni precedenti.`;
+      const header = `
+        <div class="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 text-[10px] uppercase font-bold text-zinc-500 tracking-wider">
+          <span></span><span class="w-16 text-right">Ora</span><span class="w-16 text-right">Prima</span><span class="w-16 text-right">Var.</span>
+        </div>`;
+      const muscleRows = Object.keys(c.muscles)
+        .filter(g => g !== "Altro" || c.muscles[g] > 0 || p.muscles[g] > 0)
+        .map(g => compareRow(g, c.muscles[g], p.muscles[g])).join("");
+      if (c.workouts === 0 && p.workouts === 0) {
+        $("compare-table").innerHTML = "<p class='text-zinc-500 text-xs'>Nessun allenamento in questi due periodi.</p>";
+        return;
+      }
+      $("compare-table").innerHTML = header
+        + compareRow("Allenamenti", c.workouts, p.workouts)
+        + compareRow("Giorni di allenamento", c.training_days, p.training_days)
+        + compareRow("Serie", c.sets, p.sets)
+        + compareRow("Volume (kg)", c.volume, p.volume)
+        + compareRow("Tempo in palestra", c.duration_seconds, p.duration_seconds, fmtMinutes)
+        + `<div class="pt-3 mt-2 border-t border-white/5 text-[10px] uppercase font-bold text-zinc-500 tracking-wider">Serie per gruppo muscolare</div>`
+        + muscleRows;
+    });
+
+    function setCompareDays(days) { compareDays = days; loadCompare(); }
+
+    // ---- Peso corporeo ----
+    const loadBodyWeight = guard(async () => {
+      if (!$("bw-date").value) $("bw-date").value = todayLocal();
+      bodyWeights = await api("/api/body-weight");
+      renderBodyWeight();
+    });
+
+    function renderBodyWeight() {
+      const list = bodyWeights;
+      const summary = $("bw-summary");
+      if (!list.length) {
+        summary.textContent = "Nessuna misurazione: inserisci il tuo peso qui sopra.";
+        $("bw-list").innerHTML = "";
+        if (weightChart) { weightChart.destroy(); weightChart = null; }
+        return;
+      }
+      const last = list[list.length - 1];
+      let text = `Ultimo: ${fmtNum(last.weight_kg)} kg (${fmtDateIt(last.date)})`;
+      // Variazione rispetto alla misurazione più vecchia degli ultimi 30 giorni
+      const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30);
+      const cutoffIso = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, "0")}-${String(cutoff.getDate()).padStart(2, "0")}`;
+      const base = list.find(w => w.date >= cutoffIso);
+      if (base && base.date !== last.date) {
+        const diff = Math.round((last.weight_kg - base.weight_kg) * 10) / 10;
+        text += ` · ${diff > 0 ? "+" : diff < 0 ? "−" : ""}${fmtNum(Math.abs(diff))} kg negli ultimi 30 giorni`;
+      }
+      summary.textContent = text;
+
+      $("bw-list").innerHTML = list.slice(-7).reverse().map(w => `
+        <div class="flex justify-between items-center text-xs text-zinc-300 py-1 border-b border-white/5">
+          <span>${esc(fmtDateIt(w.date))}</span>
+          <span class="flex items-center gap-3"><span class="font-semibold tabular-nums">${esc(fmtNum(w.weight_kg))} kg</span>
+            <button type="button" onclick='deleteBodyWeight(${JSON.stringify(w.date)})' class="text-red-400/80 px-1" aria-label="Elimina misurazione">✕</button></span>
+        </div>
+      `).join("");
+
+      if (weightChart) { weightChart.destroy(); weightChart = null; }
+      if (typeof Chart === "undefined") return;   // libreria non caricata: restano riepilogo ed elenco
+      weightChart = new Chart($("weightChart").getContext("2d"), {
+        type: "line",
+        data: {
+          labels: list.map(w => fmtDateShort(w.date)),
+          datasets: [{
+            label: "Peso (kg)",
+            data: list.map(w => w.weight_kg),
+            borderColor: "#0A84FF", backgroundColor: "rgba(10, 132, 255, 0.12)",
+            borderWidth: 2.5, pointBackgroundColor: "#0A84FF", pointRadius: 3, fill: true, tension: 0.3
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { color: "rgba(255, 255, 255, 0.05)" }, ticks: { color: "#8E8E93", font: { size: 10 }, maxTicksLimit: 6 } },
+            y: { grid: { color: "rgba(255, 255, 255, 0.05)" }, ticks: { color: "#8E8E93", font: { size: 10 } } }
+          }
+        }
+      });
+    }
+
+    const saveBodyWeight = guard(async () => {
+      const kg = parseFloat(String($("bw-input").value).replace(",", "."));
+      if (isNaN(kg)) return toast("Inserisci il tuo peso in kg.");
+      await post("/api/body-weight", { weight_kg: kg, date: $("bw-date").value || null });
+      $("bw-input").value = "";
+      await loadBodyWeight();
+      toast("Peso salvato.", "ok");
+    });
+
+    const deleteBodyWeight = guard(async (date) => {
+      if (!confirm(`Eliminare la misurazione del ${fmtDateIt(date)}?`)) return;
+      await api(`/api/body-weight/${encodeURIComponent(date)}`, { method: "DELETE" });
+      await loadBodyWeight();
     });
 
     function setChartMetric(metric) {
@@ -1374,7 +1587,7 @@
 
       if (tab === "workout") await guard(refreshActiveWorkout)();
       if (tab === "history") await loadHistory();
-      if (tab === "stats") { loadExerciseList(); loadWeeklyVolume(); }
+      if (tab === "stats") await switchStatsView(statsView);
       if (tab === "routines") await loadRoutines();
       if (tab === "account") {
         // Aggiorna il profilo: l'email potrebbe essere stata verificata da un altro dispositivo
