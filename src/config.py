@@ -43,6 +43,8 @@ REGISTRATION_INVITE_CODE = (os.getenv("REGISTRATION_INVITE_CODE") or "").strip()
 # Se True, non si può accedere finché l'email non è verificata (richiede SMTP funzionante).
 REQUIRE_EMAIL_VERIFICATION = _bool("REQUIRE_EMAIL_VERIFICATION", False)
 SESSION_DAYS = _int("SESSION_DAYS", 30)
+# Email (separate da virgole) che possono aprire la pagina /admin con le statistiche d'uso.
+ADMIN_EMAILS = {e.strip().lower() for e in (os.getenv("ADMIN_EMAILS") or "").split(",") if e.strip()}
 
 # --- Indirizzi e database --------------------------------------------------
 # URL pubblico dell'app: usato nei link delle email (verifica, reset, disiscrizione).
@@ -51,6 +53,10 @@ BASE_URL = (os.getenv("BASE_URL") or "http://127.0.0.1:8000").strip().rstrip("/"
 # Un percorso relativo viene risolto rispetto alla radice del progetto, non alla cwd.
 _db_path = Path(os.getenv("DATABASE_PATH", "workout_tracker.db"))
 DATABASE_PATH = str(_db_path if _db_path.is_absolute() else PROJECT_ROOT / _db_path)
+
+# Cartella dei backup (la usa anche scripts/backup_db.py): qui la pagina /admin controlla l'ultimo.
+_backup_dir = Path(os.getenv("BACKUP_DIR", "backups"))
+BACKUP_DIR = str(_backup_dir if _backup_dir.is_absolute() else PROJECT_ROOT / _backup_dir)
 
 # --- Invio email (SMTP) ----------------------------------------------------
 SMTP_HOST = (os.getenv("SMTP_HOST") or "").strip()

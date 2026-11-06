@@ -2,6 +2,8 @@
 import hmac
 import html
 import json
+import logging
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -10,6 +12,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from src import admin as admin_stats
 from src import body as body_store
 from src import config, emailer
 from src import routines as routine_store
@@ -66,12 +69,29 @@ app = FastAPI(title="Gym Tracker API", lifespan=lifespan)
 WEB_DIR = Path(__file__).resolve().parent / "web"
 
 
+access_log = logging.getLogger("gymbot.access")
+_LOGGED_PREFIXES = ("/api/", "/unsubscribe", "/admin")
+
+
 @app.middleware("http")
-async def no_store_for_api(request: Request, call_next):
-    """I dati personali non devono finire nelle cache del browser o dei proxy."""
+async def no_store_and_access_log(request: Request, call_next):
+    """Cache-Control: no-store sulle API (dati personali) + una riga di log per richiesta.
+
+    Il log dice chi fa cosa (id utente, mai email, password, token o query string) ed è la base per
+    capire come viene usata l'app:  journalctl -u gymbot | grep gymbot.access
+    """
+    started = time.monotonic()
     response = await call_next(request)
-    if request.url.path.startswith("/api/"):
+    path = request.url.path
+    if path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store"
+    if path.startswith(_LOGGED_PREFIXES):
+        uid = getattr(request.state, "user_id", None)
+        access_log.info(
+            "%s %s -> %s %dms uid=%s ip=%s",
+            request.method, path, response.status_code, (time.monotonic() - started) * 1000,
+            uid if uid is not None else "-", _client_ip(request),
+        )
     return response
 
 
@@ -107,11 +127,12 @@ def _bearer_token(authorization: str) -> str:
     return token.strip() if scheme.lower() == "bearer" else ""
 
 
-def get_current_user(authorization: str = Header(default="")) -> dict:
+def get_current_user(request: Request, authorization: str = Header(default="")) -> dict:
     token = _bearer_token(authorization)
     user = user_store.get_user_by_session(token) if token else None
     if user is None:
         raise HTTPException(status_code=401, detail="Accesso richiesto")
+    request.state.user_id = user["id"]   # lo legge il log degli accessi
     if config.REQUIRE_EMAIL_VERIFICATION and not user["email_verified"]:
         raise HTTPException(status_code=403, detail="Verifica prima il tuo indirizzo email")
     return user
@@ -280,16 +301,34 @@ def api_logout(authorization: str = Header(default=""), user: dict = Depends(get
     return {"status": "ok"}
 
 
+def is_admin(user: dict) -> bool:
+    """Admin = email elencata in ADMIN_EMAILS. Con SMTP attivo serve anche l'email verificata,
+    così nessuno può diventare admin registrandosi con un indirizzo che non possiede."""
+    if (user["email"] or "").lower() not in config.ADMIN_EMAILS:
+        return False
+    return bool(user["email_verified"]) or not config.SMTP_ENABLED
+
+
+def get_admin_user(user: dict = Depends(get_current_user)) -> dict:
+    if not is_admin(user):
+        raise HTTPException(status_code=403, detail="Area riservata")
+    return user
+
+
+def _me_payload(user: dict) -> dict:
+    return {**user_store.public_user(user), "is_admin": is_admin(user)}
+
+
 @app.get("/api/auth/me")
 def api_me(user: dict = Depends(get_current_user)):
-    return user_store.public_user(user)
+    return _me_payload(user)
 
 
 @app.patch("/api/auth/me")
 def api_update_me(req: ProfileUpdateReq, user: dict = Depends(get_current_user)):
     if req.marketing_opt_in is not None:
         user_store.set_marketing_opt_in(user["id"], req.marketing_opt_in)
-    return user_store.public_user(user_store.get_user(user["id"]))
+    return _me_payload(user_store.get_user(user["id"]))
 
 
 @app.post("/api/auth/verify-email")
@@ -713,6 +752,18 @@ app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
 @app.get("/")
 def serve_pwa():
     return HTMLResponse(render_index(WEB_DIR), headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/api/admin/stats")
+def api_admin_stats(admin: dict = Depends(get_admin_user)):
+    """Solo numeri aggregati: nessuna email, nessun contenuto degli allenamenti."""
+    return admin_stats.collect_stats()
+
+
+@app.get("/admin")
+def serve_admin():
+    # La pagina è statica e innocua: i dati arrivano da /api/admin/stats, che verifica l'admin.
+    return FileResponse(WEB_DIR / "admin.html")
 
 
 @app.get("/privacy")

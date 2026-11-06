@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="robots" content="noindex" />
+  <title>Admin - Gym Tracker</title>
+  <style>
+    :root { --bg:#000; --card:#1C1C1E; --fg:#fff; --muted:#a1a1aa; --line:rgba(255,255,255,.08); --brand:#0A84FF; --ok:#34d399; --warn:#fcd34d; --bad:#f87171; }
+    @media (prefers-color-scheme: light) { :root { --bg:#F2F2F7; --card:#fff; --fg:#000; --muted:#6c6c70; --line:rgba(0,0,0,.09); --brand:#007AFF; --ok:#1e8e3e; --warn:#b25000; --bad:#d70015; } }
+    html[data-theme="dark"] { --bg:#000; --card:#1C1C1E; --fg:#fff; --muted:#a1a1aa; --line:rgba(255,255,255,.08); --brand:#0A84FF; --ok:#34d399; --warn:#fcd34d; --bad:#f87171; }
+    html[data-theme="light"] { --bg:#F2F2F7; --card:#fff; --fg:#000; --muted:#6c6c70; --line:rgba(0,0,0,.09); --brand:#007AFF; --ok:#1e8e3e; --warn:#b25000; --bad:#d70015; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--fg); font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif; padding:20px 16px 48px; }
+    main { max-width: 760px; margin: 0 auto; }
+    h1 { font-size: 24px; margin: 0 0 4px; } h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 28px 0 10px; }
+    a { color: var(--brand); } .muted { color: var(--muted); font-size: 12px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+    .tile { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 14px; }
+    .tile .n { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .tile .l { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .chart { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 14px; }
+    .bars { display: flex; align-items: flex-end; gap: 2px; height: 90px; }
+    .bars div { flex: 1; background: var(--brand); border-radius: 3px 3px 0 0; min-height: 2px; opacity: .85; }
+    .bars div.zero { opacity: .25; }
+    .axis { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); margin-top: 6px; }
+    .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+    #msg { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 16px; }
+    .hidden { display: none; }
+  </style>
+  <script>
+    try { var t = localStorage.getItem("gym_theme"); if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t); } catch (e) {}
+  </script>
+</head>
+<body>
+<main>
+  <p><a href="/">← Torna all'app</a></p>
+  <h1>Statistiche d'uso</h1>
+  <p class="muted" id="stamp">Caricamento…</p>
+  <div id="msg" class="hidden"></div>
+  <div id="content" class="hidden">
+    <h2>Utenti</h2><div class="grid" id="users"></div>
+    <h2>Allenamenti</h2><div class="grid" id="workouts"></div>
+    <h2>Nuove registrazioni, ultimi 30 giorni</h2><div class="chart" id="signups"></div>
+    <h2>Allenamenti completati, ultimi 30 giorni</h2><div class="chart" id="workouts-daily"></div>
+    <h2>Sistema</h2><div class="grid" id="system"></div>
+    <p class="muted" style="margin-top:24px">Solo numeri aggregati: qui non compaiono email né contenuti degli allenamenti. Gli "attivi" si basano sull'ultimo utilizzo della sessione, aggiornato al massimo una volta all'ora. Date in UTC.</p>
+  </div>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const tile = (n, l, cls) => `<div class="tile"><div class="n ${cls || ""}">${n}</div><div class="l">${l}</div></div>`;
+  function bars(series) {
+    const max = Math.max(1, ...series.map(d => d.count));
+    const total = series.reduce((a, d) => a + d.count, 0);
+    return `<div class="bars">${series.map(d => `<div class="${d.count ? "" : "zero"}" style="height:${Math.round(d.count / max * 100)}%" title="${d.date}: ${d.count}"></div>`).join("")}</div>
+      <div class="axis"><span>${series[0].date.slice(5)}</span><span>totale ${total} · picco ${max}</span><span>${series[series.length - 1].date.slice(5)}</span></div>`;
+  }
+  function show(msg) { $("msg").textContent = msg; $("msg").classList.remove("hidden"); $("stamp").textContent = ""; }
+  async function load() {
+    let token = ""; try { token = localStorage.getItem("gym_token") || ""; } catch (e) {}
+    if (!token) return show("Accedi prima all'app, poi riapri questa pagina.");
+    let res;
+    try { res = await fetch("/api/admin/stats", { headers: { Authorization: "Bearer " + token } }); }
+    catch (e) { return show("Server non raggiungibile."); }
+    if (res.status === 401) return show("Sessione scaduta: accedi di nuovo all'app.");
+    if (res.status === 403) return show("Quest'area è riservata all'amministratore.");
+    if (!res.ok) return show("Errore " + res.status);
+    const d = await res.json(), u = d.users, w = d.workouts, s = d.system, b = s.backup;
+    $("stamp").textContent = "Aggiornato: " + d.generated_at;
+    $("users").innerHTML = tile(u.total, "utenti totali") + tile(u.active_1d, "attivi (24 ore)") + tile(u.active_7d, "attivi (7 giorni)")
+      + tile(u.active_30d, "attivi (30 giorni)") + tile(u.new_7d, "nuovi (7 giorni)") + tile(u.new_30d, "nuovi (30 giorni)")
+      + tile(u.verified, "email verificate") + tile(u.newsletter, "iscritti alle novità");
+    $("workouts").innerHTML = tile(w.completed, "allenamenti completati") + tile(w.last_7d, "ultimi 7 giorni") + tile(w.last_30d, "ultimi 30 giorni")
+      + tile(w.in_progress, "in corso adesso") + tile(w.sets, "serie registrate") + tile(w.routines, "schede") + tile(w.body_weights, "pesate");
+    $("signups").innerHTML = bars(d.signups_daily);
+    $("workouts-daily").innerHTML = bars(d.workouts_daily);
+    let bk, bkCls;
+    if (!b.count) { bk = "nessuno"; bkCls = "bad"; }
+    else { bk = b.latest_age_hours < 1 ? "meno di 1 ora fa" : Math.round(b.latest_age_hours) + " ore fa"; bkCls = b.latest_age_hours > 36 ? "warn" : "ok"; }
+    $("system").innerHTML = tile(bk, `ultimo backup (${b.count} copie)`, bkCls) + tile(s.db_size_mb + " MB", "dimensione database")
+      + tile(s.disk_free_gb + " GB", `disco libero (${s.disk_used_pct}% usato)`, s.disk_used_pct > 90 ? "warn" : "")
+      + tile(s.smtp_enabled ? "attivo" : "spento", "invio email", s.smtp_enabled ? "ok" : "warn");
+    $("content").classList.remove("hidden");
+  }
+  load();
+</script>
+</body>
+</html>

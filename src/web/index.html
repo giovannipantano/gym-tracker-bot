@@ -452,6 +452,7 @@
           <div id="acc-email" class="font-semibold break-all"></div>
           <div id="acc-verified" class="text-xs"></div>
           <button id="acc-resend" class="hidden btn-secondary mt-2" onclick="resendVerification()">Reinvia l'email di verifica</button>
+          <a id="acc-admin" href="/admin" class="hidden link block pt-2">Statistiche d'uso (amministratore) →</a>
         </div>
 
         <div id="install-card" class="hidden card space-y-2">
@@ -1748,6 +1749,7 @@
       verified.textContent = me.email_verified ? "✓ Email verificata" : "Email non ancora verificata";
       verified.className = "text-xs " + (me.email_verified ? "text-good" : "text-warn");
       $("acc-resend").classList.toggle("hidden", me.email_verified);
+      $("acc-admin").classList.toggle("hidden", !me.is_admin);
       $("acc-marketing").checked = !!me.marketing_opt_in;
       renderThemeControl();
       renderInstall();

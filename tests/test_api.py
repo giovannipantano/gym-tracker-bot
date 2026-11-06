@@ -405,3 +405,40 @@ def test_compare_is_private(client):
     _done_workout(client, a)
     data = client.get("/api/analytics/compare?days=7", headers=b).json()
     assert data["current"]["workouts"] == 0 and data["current"]["muscles"]["Petto"] == 0
+
+
+# --- Amministrazione e log degli accessi --------------------------------------------
+def test_admin_stats_requires_admin(client, logged, monkeypatch):
+    assert client.get("/api/admin/stats").status_code == 401
+    assert client.get("/api/admin/stats", headers=logged).status_code == 403
+    assert client.get("/api/auth/me", headers=logged).json()["is_admin"] is False
+
+    monkeypatch.setattr(config, "ADMIN_EMAILS", {"mario@example.com"})
+    assert client.get("/api/auth/me", headers=logged).json()["is_admin"] is True
+    res = client.get("/api/admin/stats", headers=logged)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["users"]["total"] == 1 and "mario@example.com" not in res.text
+
+
+def test_admin_needs_verified_email_when_smtp_is_on(client, logged, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_EMAILS", {"mario@example.com"})
+    monkeypatch.setattr(config, "SMTP_ENABLED", True)
+    assert client.get("/api/admin/stats", headers=logged).status_code == 403
+
+
+def test_admin_page_is_served(client):
+    assert client.get("/admin").status_code == 200
+
+
+def test_access_log_records_user_id_but_no_secrets(client, caplog):
+    import logging
+    token = register(client).json()["token"]
+    uid = client.get("/api/auth/me", headers=auth(token)).json()["id"]
+    with caplog.at_level(logging.INFO, logger="gymbot.access"):
+        client.get("/api/routines", headers=auth(token))
+        client.get("/api/routines")                                   # senza accesso
+    lines = [r.getMessage() for r in caplog.records]
+    assert any(f"GET /api/routines -> 200" in l and f"uid={uid}" in l for l in lines)
+    assert any("GET /api/routines -> 401" in l and "uid=-" in l for l in lines)
+    assert not any(token in l or "mario@example.com" in l for l in lines)
