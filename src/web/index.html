@@ -108,6 +108,16 @@
     .border-line { border-color: var(--line); } .border-soft { border-color: var(--soft); } .border-mid { border-color: var(--mid); }
     .ph-faint::placeholder { color: var(--faint); }
 
+    /* Scorri per eliminare: lo strato rosso sta sotto il contenuto, che scorre a sinistra */
+    .swipe { position: relative; overflow: hidden; border-radius: 24px; }
+    .swipe-row { border-radius: 0; }
+    .swipe-bg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: flex-end;
+                padding-right: 22px; background: #d70015; color: #fff; font-weight: 700; font-size: 14px; }
+    .swipe-fg { position: relative; touch-action: pan-y; will-change: transform; -webkit-user-select: none; user-select: none; }
+    .swipe-fg.snap { transition: transform .2s ease; }
+    .touch-only { display: none; }
+    @media (hover: none) and (pointer: coarse) { .touch-only { display: block; } }
+
     /* Selettori a scelta singola (stile iOS) */
     .seg { background: var(--seg-bg); }
     .seg-on { background: var(--seg-on); color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,.25); }
@@ -340,6 +350,7 @@
           <h2 class="text-2xl font-bold tracking-tight text-fg">Cronologia</h2>
           <p class="text-xs text-muted mt-1">Archivio sessioni completate e volumi</p>
         </div>
+        <p class="touch-only text-[11px] text-faint">Scorri un allenamento verso sinistra per eliminarlo.</p>
         <div id="history-list" class="space-y-3"></div>
         <button id="history-more" class="hidden btn-secondary w-full" onclick="loadMoreHistory()">Carica altri allenamenti</button>
       </section>
@@ -424,6 +435,7 @@
           <button class="btn-primary" style="flex: 1" onclick="openRoutineEditor(null)">+ Nuova scheda</button>
           <button class="btn-secondary" onclick="openImport()">Importa CSV</button>
         </div>
+        <p class="touch-only text-[11px] text-faint">Scorri una scheda verso sinistra per eliminarla.</p>
         <div id="routines-list" class="space-y-3"></div>
         <button class="btn-secondary w-full" onclick="addTemplate()">Aggiungi le schede di esempio (Push / Pull / Legs / Upper / Lower)</button>
       </section>
@@ -1085,7 +1097,8 @@
         : "";
 
       return `
-        <div class="card space-y-3">
+        <div class="swipe"><div class="swipe-bg">Elimina</div>
+        <div class="swipe-fg card space-y-3" data-swipe="workout" data-arg="${Number(w.id)}">
           <div class="flex justify-between items-center">
             <div>
               <span class="font-bold text-fg text-base block">${esc(w.split)}</span>
@@ -1097,7 +1110,7 @@
           ${notes}
           <div class="space-y-2 pt-2 border-t border-soft">${details}</div>
           <button onclick="openNotesEditor(${Number(w.id)})" class="link">${w.notes ? "✎ Modifica nota" : "+ Aggiungi nota"}</button>
-        </div>
+        </div></div>
       `;
     }
 
@@ -1357,11 +1370,12 @@
       summary.textContent = text;
 
       $("bw-list").innerHTML = list.slice(-7).reverse().map(w => `
-        <div class="flex justify-between items-center text-xs text-fg-3 py-1 border-b border-soft">
+        <div class="swipe swipe-row"><div class="swipe-bg">Elimina</div>
+        <div class="swipe-fg flex justify-between items-center text-xs text-fg-3 py-1 border-b border-soft" style="background:var(--surface)" data-swipe="weight" data-arg="${esc(w.date)}">
           <span>${esc(fmtDateIt(w.date))}</span>
           <span class="flex items-center gap-3"><span class="font-semibold tabular-nums">${esc(fmtNum(w.weight_kg))} kg</span>
             <button type="button" onclick='deleteBodyWeight(${JSON.stringify(w.date)})' class="text-danger-soft px-1" aria-label="Elimina misurazione">✕</button></span>
-        </div>
+        </div></div>
       `).join("");
 
       if (weightChart) { weightChart.destroy(); weightChart = null; }
@@ -1474,7 +1488,8 @@
         return;
       }
       container.innerHTML = routines.map(r => `
-        <div class="card space-y-2">
+        <div class="swipe"><div class="swipe-bg">Elimina</div>
+        <div class="swipe-fg card space-y-2" data-swipe="routine" data-arg="${Number(r.id)}">
           <div class="flex justify-between items-start gap-3">
             <div class="min-w-0">
               <span class="font-bold text-fg text-base block">${esc(r.name)}</span>
@@ -1486,7 +1501,7 @@
             </div>
           </div>
           <div class="text-[11px] text-faint leading-relaxed">${esc(r.exercises.map(e => e.name).join(" · "))}</div>
-        </div>
+        </div></div>
       `).join("");
     }
 
@@ -1631,6 +1646,55 @@
       if (typeof renderThemeControl === "function") renderThemeControl();
     });
 
+
+
+    // ============================ Scorri per eliminare ============================
+    // Trascinando a sinistra un elemento con data-swipe si scopre lo strato rosso "Elimina";
+    // oltre la soglia parte la stessa eliminazione dei pulsanti (con la stessa conferma).
+    // I pulsanti restano, così chi non usa il touch ha comunque un modo per eliminare.
+    const SWIPE_ACTIONS = {
+      workout: (a) => deleteWorkout(Number(a)),
+      routine: (a) => deleteRoutine(Number(a)),
+      weight: (a) => deleteBodyWeight(a),
+    };
+    (function initSwipe() {
+      const THRESHOLD = 90;
+      let g = null, suppressClick = false;
+      document.addEventListener("pointerdown", (e) => {
+        if (e.pointerType === "mouse" && e.button !== 0) return;
+        const fg = e.target.closest && e.target.closest("[data-swipe]");
+        if (!fg || e.target.closest("input, textarea, select")) return;
+        g = { fg, x: e.clientX, y: e.clientY, dx: 0, dragging: false, id: e.pointerId };
+      });
+      document.addEventListener("pointermove", (e) => {
+        if (!g || e.pointerId !== g.id) return;
+        const dx = e.clientX - g.x, dy = e.clientY - g.y;
+        if (!g.dragging) {
+          if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { g = null; return; }   // è uno scroll verticale
+          if (dx > -8) return;
+          g.dragging = true;
+          g.fg.classList.remove("snap");
+          try { g.fg.setPointerCapture(e.pointerId); } catch (err) {}
+        }
+        g.dx = Math.min(0, dx);
+        g.fg.style.transform = `translateX(${g.dx}px)`;
+      });
+      function finish(e, cancelled) {
+        if (!g || e.pointerId !== g.id) return;
+        const { fg, dx, dragging } = g; g = null;
+        if (!dragging) return;
+        suppressClick = true; setTimeout(() => { suppressClick = false; }, 0);
+        fg.classList.add("snap");
+        fg.style.transform = "";                       // torna sempre al suo posto: la conferma decide
+        if (!cancelled && dx <= -THRESHOLD) {
+          const action = SWIPE_ACTIONS[fg.dataset.swipe];
+          if (action) action(fg.dataset.arg);
+        }
+      }
+      document.addEventListener("pointerup", (e) => finish(e, false));
+      document.addEventListener("pointercancel", (e) => finish(e, true));
+      document.addEventListener("click", (e) => { if (suppressClick) { e.stopPropagation(); e.preventDefault(); } }, true);
+    })();
 
     // ============================ Installazione come app (PWA) ============================
     // Android/Chrome: il browser avvisa con "beforeinstallprompt" e noi mostriamo il nostro invito.
