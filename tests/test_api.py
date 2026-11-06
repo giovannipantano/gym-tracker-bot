@@ -181,7 +181,9 @@ def test_routines_crud_and_import(client, logged):
     imp = client.post("/api/routines/import", headers=logged, json={"csv": "scheda,esercizio\nPull,Trazioni\n"}).json()
     assert imp["created"] == ["Pull"]
     assert client.post("/api/routines/import", headers=logged, json={"csv": "a,b\n1,2"}).status_code == 422
-    assert len(client.post("/api/routines/template", headers=logged).json()["created"]) == 5
+    # "Pull" esiste già (importata sopra): il modello aggiunge solo le altre 4 schede
+    created = client.post("/api/routines/template", headers=logged).json()["created"]
+    assert len(created) == 4 and "Pull" not in created
     assert client.delete(f"/api/routines/{rid}", headers=logged).status_code == 200
     assert client.delete(f"/api/routines/{rid}", headers=logged).status_code == 404
 
