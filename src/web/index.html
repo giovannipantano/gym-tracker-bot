@@ -182,7 +182,10 @@
 
           <div class="card space-y-3">
             <div class="flex justify-between items-center">
-              <span id="active-split-badge" class="bg-blue-500/20 text-blue-400 text-[11px] font-bold px-3 py-1 rounded-full uppercase tracking-wider"></span>
+              <div class="flex items-center gap-2">
+                <span id="active-split-badge" class="bg-blue-500/20 text-blue-400 text-[11px] font-bold px-3 py-1 rounded-full uppercase tracking-wider"></span>
+                <span class="text-xs font-semibold text-zinc-400 tabular-nums">⏱ <span id="active-timer">00:00</span></span>
+              </div>
               <button onclick="endWorkout()" class="bg-red-500/15 hover:bg-red-500/25 active:scale-95 text-red-400 text-xs font-semibold px-3 py-1.5 rounded-full transition">Termina</button>
             </div>
             <div id="routine-reminder" class="text-xs text-zinc-300 leading-relaxed bg-[#2C2C2E]/60 p-3 rounded-2xl border border-white/5 space-y-1"></div>
@@ -237,6 +240,12 @@
               <button onclick="undoLast()" class="text-xs font-semibold text-red-400 hover:text-red-300 active:scale-95 transition">↩️ Annulla Ultimo</button>
             </div>
             <div id="current-sets-list" class="text-xs text-zinc-400 space-y-2"></div>
+            <p class="text-[10px] text-zinc-500 px-1">Tocca una serie per correggerla o eliminarla.</p>
+          </div>
+
+          <div class="card space-y-2">
+            <label class="label" for="workout-notes">Note sull'allenamento</label>
+            <textarea id="workout-notes" class="field" rows="2" maxlength="1000" placeholder="Sonno, dolori, sensazioni…" onblur="saveActiveNotes()"></textarea>
           </div>
 
         </div>
@@ -412,6 +421,44 @@
     </div>
   </div>
 
+  <!-- ==================== MODALE: MODIFICA SERIE ==================== -->
+  <div id="set-modal" class="hidden fixed inset-0 z-50 bg-black/80 overflow-y-auto">
+    <div class="max-w-lg mx-auto p-4" style="padding-top: calc(env(safe-area-inset-top) + 1rem); padding-bottom: 6rem;">
+      <div class="card space-y-3">
+        <h3 class="text-lg font-bold">Modifica serie</h3>
+        <p id="set-ex" class="text-sm text-zinc-400"></p>
+        <div class="grid grid-cols-3 gap-3">
+          <div><label class="label" for="set-weight">Peso (kg)</label>
+            <input id="set-weight" class="field" type="number" step="0.5" min="0" inputmode="decimal" /></div>
+          <div><label class="label" for="set-reps">Reps</label>
+            <input id="set-reps" class="field" type="number" min="0" inputmode="numeric" /></div>
+          <div><label class="label" for="set-secs">Secondi</label>
+            <input id="set-secs" class="field" type="number" min="0" inputmode="numeric" /></div>
+        </div>
+        <p class="text-xs text-zinc-500">Per una serie a tempo compila i secondi e lascia vuote le ripetizioni.</p>
+        <div class="flex gap-2">
+          <button class="btn-secondary flex-1" onclick="closeModal('set-modal')">Annulla</button>
+          <button class="btn-primary" style="flex: 1" onclick="saveSetEdit()">Salva</button>
+        </div>
+        <button class="btn-danger" onclick="deleteSetFromModal()">Elimina questa serie</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODALE: NOTE DELL'ALLENAMENTO (STORICO) ==================== -->
+  <div id="notes-modal" class="hidden fixed inset-0 z-50 bg-black/80 overflow-y-auto">
+    <div class="max-w-lg mx-auto p-4" style="padding-top: calc(env(safe-area-inset-top) + 1rem); padding-bottom: 6rem;">
+      <div class="card space-y-3">
+        <h3 class="text-lg font-bold">Note sull'allenamento</h3>
+        <textarea id="notes-text" class="field" rows="5" maxlength="1000" placeholder="Sonno, dolori, sensazioni…"></textarea>
+        <div class="flex gap-2">
+          <button class="btn-secondary flex-1" onclick="closeModal('notes-modal')">Annulla</button>
+          <button class="btn-primary" style="flex: 1" onclick="saveNotesModal()">Salva</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ==================== MODALE: ESPORTA DATI ==================== -->
   <div id="export-modal" class="hidden fixed inset-0 z-50 bg-black/80 overflow-y-auto">
     <div class="max-w-lg mx-auto p-4" style="padding-top: calc(env(safe-area-inset-top) + 1rem); padding-bottom: 6rem;">
@@ -444,6 +491,12 @@
     let pendingVerifyToken = "";
     let pendingResetToken = "";
     let suggestionsLoaded = false;
+    let setIndex = {};          // id serie -> dati, per aprire l'editor
+    let historyItems = [];      // allenamenti della cronologia caricati finora
+    let editingSetId = null;
+    let editingNotesWorkoutId = null;
+    let timerStartMs = null;    // istante (ms) di inizio dell'allenamento in corso
+    let timerInterval = null;
 
     const $ = (id) => document.getElementById(id);
 
@@ -529,6 +582,10 @@
       selectedExercise = "";
       currentProgressionData = [];
       suggestionsLoaded = false;
+      setIndex = {};
+      historyItems = [];
+      historyCount = 0;
+      stopTimer();
       if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
     }
 
@@ -645,6 +702,38 @@
       return `${s.reps} reps`;
     }
 
+    function fmtClock(totalSeconds) {
+      const t = Math.max(0, Math.floor(totalSeconds));
+      const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
+      const mm = String(m).padStart(2, "0"), ss = String(sec).padStart(2, "0");
+      return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+    }
+
+    function fmtDuration(totalSeconds) {
+      const minutes = Math.max(1, Math.round(totalSeconds / 60));
+      if (minutes < 60) return `${minutes} min`;
+      return `${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, "0")} min`;
+    }
+
+    // Il timer usa l'orologio del dispositivo a partire dai secondi trascorsi calcolati dal server
+    function startTimer(elapsedSeconds) {
+      timerStartMs = Date.now() - (elapsedSeconds || 0) * 1000;
+      const tick = () => { $("active-timer").textContent = fmtClock((Date.now() - timerStartMs) / 1000); };
+      tick();
+      if (!timerInterval) timerInterval = setInterval(tick, 1000);
+    }
+
+    function stopTimer() {
+      if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+      timerStartMs = null;
+    }
+
+    // Una serie come pulsante: toccandola si apre l'editor
+    function setPillHtml(s) {
+      setIndex[s.id] = s;
+      return `<button type="button" onclick="openSetEditor(${Number(s.id)})" class="inline-block bg-[#2C2C2E] border border-white/10 rounded-xl px-2.5 py-1 text-[11px] font-semibold text-zinc-200 active:scale-95 transition">${esc(formatSet(s))}</button>`;
+    }
+
     // ============================ Tab Workout ============================
     async function refreshActiveWorkout() {
       const [routineList, active] = await Promise.all([api("/api/routines"), api("/api/workout/active")]);
@@ -662,6 +751,7 @@
       const actView = $("active-workout-view");
 
       if (!activeData.active) {
+        stopTimer();
         noView.classList.remove("hidden");
         actView.classList.add("hidden");
         $("no-routines-card").classList.toggle("hidden", routines.length > 0);
@@ -702,18 +792,20 @@
 
       // Serie registrate oggi raggruppate per esercizio, nell'ordine di esecuzione
       const grouped = {};
-      activeData.sets.forEach(s => {
-        (grouped[s.exercise] = grouped[s.exercise] || []).push(formatSet(s));
-      });
+      activeData.sets.forEach(s => { (grouped[s.exercise] = grouped[s.exercise] || []).push(s); });
       const list = $("current-sets-list");
       list.innerHTML = Object.keys(grouped).length
         ? Object.entries(grouped).map(([ex, sets]) => `
             <div class="bg-[#2C2C2E]/50 p-2.5 rounded-2xl border border-white/5">
-              <span class="font-bold text-zinc-200 block mb-0.5">${esc(ex)}</span>
-              <span class="text-zinc-400 font-medium">${esc(sets.join("  •  "))}</span>
+              <span class="font-bold text-zinc-200 block mb-1.5">${esc(ex)}</span>
+              <div class="flex flex-wrap gap-1.5">${sets.map(setPillHtml).join("")}</div>
             </div>
           `).join("")
         : "<div class='text-zinc-500 py-1'>Nessuna serie registrata in questa sessione.</div>";
+
+      startTimer(activeData.elapsed_seconds);
+      const notesBox = $("workout-notes");
+      if (document.activeElement !== notesBox) notesBox.value = activeData.notes || "";
     }
 
     function renderExerciseChips() {
@@ -832,43 +924,134 @@
 
     function historyCardHtml(w) {
       const grouped = {};
-      w.sets.forEach(s => { (grouped[s.exercise] = grouped[s.exercise] || []).push(formatSet(s)); });
-      const details = Object.entries(grouped).map(([ex, s]) => `
+      w.sets.forEach(s => { (grouped[s.exercise] = grouped[s.exercise] || []).push(s); });
+      const details = Object.entries(grouped).map(([ex, sets]) => `
         <div class="text-[11px] text-zinc-400">
-          <span class="text-zinc-300 font-semibold">• ${esc(ex)}:</span> ${esc(s.join(", "))}
+          <span class="text-zinc-300 font-semibold block mb-1">• ${esc(ex)}</span>
+          <div class="flex flex-wrap gap-1.5">${sets.map(setPillHtml).join("")}</div>
         </div>
       `).join("");
+      const duration = w.duration_seconds ? ` · ⏱ ${fmtDuration(w.duration_seconds)}` : "";
+      const notes = w.notes
+        ? `<div class="text-[11px] text-zinc-300 bg-[#2C2C2E]/60 rounded-xl p-2.5 whitespace-pre-wrap">${esc(w.notes)}</div>`
+        : "";
 
       return `
         <div class="card space-y-3">
           <div class="flex justify-between items-center">
             <div>
               <span class="font-bold text-white text-base block">${esc(w.split)}</span>
-              <span class="text-[11px] text-zinc-400">${esc(w.date)}</span>
+              <span class="text-[11px] text-zinc-400">${esc(w.date)}${duration}</span>
             </div>
             <button onclick="deleteWorkout(${Number(w.id)})" class="text-xs text-red-400/80 hover:text-red-400 font-semibold px-2 py-1 bg-red-500/10 rounded-lg">Elimina</button>
           </div>
           <div class="text-xs font-semibold text-blue-400">Volume: ${Math.round(w.volume)} kg (${w.sets_count} serie)</div>
-          <div class="space-y-1.5 pt-2 border-t border-white/5">${details}</div>
+          ${notes}
+          <div class="space-y-2 pt-2 border-t border-white/5">${details}</div>
+          <button onclick="openNotesEditor(${Number(w.id)})" class="link">${w.notes ? "✎ Modifica nota" : "+ Aggiungi nota"}</button>
         </div>
       `;
     }
 
+    function renderHistory() {
+      $("history-list").innerHTML = historyItems.length
+        ? historyItems.map(historyCardHtml).join("")
+        : "<p class='text-zinc-500 text-xs'>Nessun workout registrato.</p>";
+    }
+
     // Carica una pagina di cronologia. reset=true riparte dall'inizio (cambio tab, dopo un'eliminazione).
     async function fetchHistoryPage(reset) {
-      const container = $("history-list");
-      if (reset) { historyCount = 0; container.innerHTML = ""; }
+      if (reset) { historyCount = 0; historyItems = []; }
       const data = await api(`/api/workouts/history?limit=${HISTORY_PAGE}&offset=${historyCount}`);
-      historyCount += data.items.length;
-      container.insertAdjacentHTML("beforeend", data.items.map(historyCardHtml).join(""));
-      if (historyCount === 0) {
-        container.innerHTML = "<p class='text-zinc-500 text-xs'>Nessun workout registrato.</p>";
-      }
+      historyItems = historyItems.concat(data.items);
+      historyCount = historyItems.length;
+      renderHistory();
+      $("history-more").classList.toggle("hidden", !data.has_more);
+    }
+
+    // Dopo una modifica ricarica ciò che l'utente già vede, senza riportarlo in cima alla lista
+    async function reloadHistoryInPlace() {
+      const limit = Math.min(Math.max(historyCount, HISTORY_PAGE), 100);
+      const data = await api(`/api/workouts/history?limit=${limit}&offset=0`);
+      historyItems = data.items;
+      historyCount = historyItems.length;
+      renderHistory();
       $("history-more").classList.toggle("hidden", !data.has_more);
     }
 
     const loadHistory = guard(() => fetchHistoryPage(true));
     const loadMoreHistory = guard(() => fetchHistoryPage(false));
+
+    // Note di un allenamento già concluso
+    function openNotesEditor(workoutId) {
+      const item = historyItems.find(w => w.id === workoutId);
+      if (!item) return;
+      editingNotesWorkoutId = workoutId;
+      $("notes-text").value = item.notes || "";
+      $("notes-modal").classList.remove("hidden");
+    }
+
+    const saveNotesModal = guard(async () => {
+      const text = $("notes-text").value.trim();
+      await api(`/api/workouts/${editingNotesWorkoutId}/notes`, { method: "PUT", body: JSON.stringify({ notes: text }) });
+      const item = historyItems.find(w => w.id === editingNotesWorkoutId);
+      if (item) item.notes = text;
+      closeModal("notes-modal");
+      renderHistory();
+    });
+
+    // Note dell'allenamento in corso: si salvano quando il campo perde il focus
+    const saveActiveNotes = guard(async () => {
+      if (!activeData.active) return;
+      const text = $("workout-notes").value.trim();
+      if (text === (activeData.notes || "")) return;
+      await api(`/api/workouts/${activeData.id}/notes`, { method: "PUT", body: JSON.stringify({ notes: text }) });
+      activeData.notes = text;
+    });
+
+    // ============================ Modifica / eliminazione di una serie ============================
+    function openSetEditor(id) {
+      const s = setIndex[id];
+      if (!s) return;
+      editingSetId = id;
+      $("set-ex").textContent = s.exercise;
+      $("set-weight").value = s.weight || "";
+      $("set-reps").value = s.duration ? "" : (s.reps || "");
+      $("set-secs").value = s.duration || "";
+      $("set-modal").classList.remove("hidden");
+    }
+
+    // La vista da aggiornare dipende da dove si trova l'utente
+    async function refreshAfterSetChange() {
+      if (currentTab === "history") await reloadHistoryInPlace();
+      else await refreshActiveWorkout();
+    }
+
+    const saveSetEdit = guard(async () => {
+      const weight = parseFloat($("set-weight").value);
+      const reps = parseInt($("set-reps").value, 10);
+      const secs = parseInt($("set-secs").value, 10);
+      const hasSecs = !isNaN(secs) && secs > 0;
+      const hasReps = !isNaN(reps) && reps > 0;
+      if (!hasSecs && !hasReps) return toast("Inserisci le ripetizioni oppure i secondi.");
+      await api(`/api/sets/${editingSetId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          weight: isNaN(weight) || weight < 0 ? 0 : weight,
+          reps: hasSecs ? 0 : reps,
+          duration: hasSecs ? secs : null
+        })
+      });
+      closeModal("set-modal");
+      await refreshAfterSetChange();
+    });
+
+    const deleteSetFromModal = guard(async () => {
+      if (!confirm("Eliminare questa serie?")) return;
+      await api(`/api/sets/${editingSetId}`, { method: "DELETE" });
+      closeModal("set-modal");
+      await refreshAfterSetChange();
+    });
 
     const deleteWorkout = guard(async (id) => {
       if (!confirm("Eliminare definitivamente questo allenamento?")) return;
