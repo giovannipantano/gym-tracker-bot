@@ -3,6 +3,7 @@ import sqlite3
 from src.catalog import canonical_exercise_name
 from src.database import (
     delete_last_exercise_sets,
+    delete_set,
     delete_workout,
     end_active_workout,
     get_active_workout,
@@ -16,7 +17,9 @@ from src.database import (
     get_workout_summary,
     init_db,
     log_sets_batch,
+    set_workout_notes,
     start_new_workout,
+    update_set,
 )
 from src import routines
 
@@ -171,6 +174,8 @@ def test_migration_from_old_schema(tmp_path, monkeypatch, make_user):
     monkeypatch.setattr("src.database.DATABASE_PATH", str(old), raising=False)
     init_db()
 
+    with get_connection() as check:
+        assert "notes" in [c[1] for c in check.execute("PRAGMA table_info(workouts)")]   # colonna aggiunta
     uid = make_user()
     assert get_recent_workouts(uid) == []          # invisibile finché non viene assegnato
     assert users.count_legacy_workouts() == 1
@@ -189,3 +194,86 @@ def test_recent_workouts_paging_is_stable(make_user):
         ids.append(w)
     seen = [r[0] for off in (0, 2, 4) for r in get_recent_workouts(uid, limit=2, offset=off)]
     assert seen == sorted(ids, reverse=True)   # stesso secondo di start_time: decide l'id
+
+
+# --- Modifica di singole serie, note e durata -------------------------------------
+
+def _one_set_workout(uid, weight=80, reps=8):
+    w = start_new_workout(uid, "Push")
+    log_sets_batch(uid, w, "Panca", [{"weight": weight, "reps": reps, "duration": None}])
+    _, sets = get_workout_details(uid, w)
+    return w, sets[0][5]   # id della serie (6a colonna)
+
+
+def test_update_set(make_user):
+    uid = make_user()
+    w, set_id = _one_set_workout(uid)
+    assert update_set(uid, set_id, 82.5, 6, None)
+    _, sets = get_workout_details(uid, w)
+    assert (sets[0][2], sets[0][3], sets[0][4]) == (82.5, 6, None)
+    assert update_set(uid, set_id, 0, 0, 45)           # diventa una serie a tempo
+    assert get_workout_details(uid, w)[1][0][4] == 45
+    assert update_set(uid, 99999, 1, 1, None) is False
+
+
+def test_delete_single_set_keeps_the_others(make_user):
+    uid = make_user()
+    w = start_new_workout(uid, "Push")
+    log_sets_batch(uid, w, "Panca", [{"weight": 80, "reps": r, "duration": None} for r in (8, 7, 6)])
+    ids = [s[5] for s in get_workout_details(uid, w)[1]]
+    assert delete_set(uid, ids[1])
+    assert [s[3] for s in get_workout_details(uid, w)[1]] == [8, 6]
+    assert delete_set(uid, ids[1]) is False            # già eliminata
+
+
+def test_set_order_never_repeats_after_deleting_a_middle_set(make_user):
+    uid = make_user()
+    w = start_new_workout(uid, "Push")
+    log_sets_batch(uid, w, "Panca", [{"weight": 80, "reps": 8, "duration": None}] * 3)
+    delete_set(uid, get_workout_details(uid, w)[1][1][5])
+    log_sets_batch(uid, w, "Panca", [{"weight": 80, "reps": 5, "duration": None}])
+    orders = [s[1] for s in get_workout_details(uid, w)[1]]
+    assert len(orders) == len(set(orders)) == 3
+
+
+def test_users_cannot_edit_or_delete_each_others_sets(make_user):
+    a, b = make_user(), make_user()
+    w, set_id = _one_set_workout(a)
+    assert update_set(b, set_id, 1, 1, None) is False
+    assert delete_set(b, set_id) is False
+    assert set_workout_notes(b, w, "hack") is False
+    _, sets = get_workout_details(a, w)
+    assert sets[0][2] == 80 and sets[0][3] == 8
+    assert get_workout_details(a, w)[0][3] == ""
+
+
+def test_workout_notes(make_user):
+    uid = make_user()
+    w, _ = _one_set_workout(uid)
+    assert get_workout_details(uid, w)[0][3] == ""
+    assert set_workout_notes(uid, w, "Dormito poco, spalla dolorante")
+    end_active_workout(uid, w)
+    assert get_workout_details(uid, w)[0][3] == "Dormito poco, spalla dolorante"
+    assert get_recent_workouts(uid)[0][6] == "Dormito poco, spalla dolorante"
+
+
+def test_duration_in_seconds(make_user):
+    uid = make_user()
+    w, _ = _one_set_workout(uid)
+    with get_connection() as conn:
+        conn.execute("UPDATE workouts SET start_time = datetime('now', '-45 minutes') WHERE id = ?", (w,))
+    elapsed = get_workout_details(uid, w)[0][4]          # in corso: fino ad ora
+    assert 45 * 60 - 5 <= elapsed <= 45 * 60 + 5
+    with get_connection() as conn:
+        conn.execute("UPDATE workouts SET start_time = '2025-01-01 10:00:00', end_time = '2025-01-01 10:52:30' WHERE id = ?", (w,))
+        conn.execute("UPDATE workouts SET is_active = 0 WHERE id = ?", (w,))
+    assert get_workout_details(uid, w)[0][4] == 52 * 60 + 30
+    assert get_recent_workouts(uid)[0][7] == 52 * 60 + 30
+
+
+def test_duration_unknown_for_unfinished_in_history_query(make_user):
+    uid = make_user()
+    w, _ = _one_set_workout(uid)
+    with get_connection() as conn:
+        conn.execute("UPDATE workouts SET is_active = 0 WHERE id = ?", (w,))   # chiuso senza orario di fine
+    assert get_recent_workouts(uid)[0][7] is None

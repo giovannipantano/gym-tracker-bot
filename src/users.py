@@ -219,8 +219,8 @@ def export_user_data(user_id: int) -> dict:
     user = get_user(user_id)
     with get_connection() as conn:
         workouts = []
-        for w_id, start, end, split, active in conn.execute(
-            "SELECT id, start_time, end_time, split_name, is_active FROM workouts WHERE user_id = ? ORDER BY id",
+        for w_id, start, end, split, active, notes in conn.execute(
+            "SELECT id, start_time, end_time, split_name, is_active, notes FROM workouts WHERE user_id = ? ORDER BY id",
             (user_id,)
         ).fetchall():
             sets = conn.execute(
@@ -233,6 +233,7 @@ def export_user_data(user_id: int) -> dict:
                 "end_time": end,
                 "routine": split,
                 "in_progress": bool(active),
+                "notes": notes,
                 "sets": [
                     {"exercise": s[0], "order": s[1], "weight_kg": s[2], "reps": s[3], "duration_seconds": s[4]}
                     for s in sets

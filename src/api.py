@@ -26,6 +26,7 @@ from src.catalog import MUSCLE_GROUPS
 from src.pages import render_index
 from src.database import (
     delete_last_exercise_sets,
+    delete_set,
     delete_workout,
     end_active_workout,
     get_active_workout,
@@ -38,7 +39,9 @@ from src.database import (
     get_workout_summary,
     init_db,
     log_sets_batch,
+    set_workout_notes,
     start_new_workout,
+    update_set,
 )
 
 FREE_WORKOUT_NAME = "Allenamento libero"
@@ -173,6 +176,16 @@ class SetItem(BaseModel):
     weight: float = Field(default=0.0, ge=0, le=1000)
     reps: int = Field(default=0, ge=0, le=1000)
     duration: int | None = Field(default=None, ge=1, le=86400)
+
+
+class SetEditReq(BaseModel):
+    weight: float = Field(default=0.0, ge=0, le=1000)
+    reps: int = Field(default=0, ge=0, le=1000)
+    duration: int | None = Field(default=None, ge=1, le=86400)
+
+
+class NotesReq(BaseModel):
+    notes: str = Field(default="", max_length=1000)
 
 
 class LogSetsReq(BaseModel):
@@ -475,20 +488,36 @@ def api_delete_routine(routine_id: int, user: dict = Depends(get_current_user)):
 
 
 # --- Allenamenti -------------------------------------------------------------------
+# Un allenamento "dimenticato aperto" viene chiuso quando se ne avvia un altro: la sua durata
+# sarebbe di ore o giorni senza significato. Oltre questa soglia la durata non viene mostrata.
+MAX_PLAUSIBLE_WORKOUT_SECONDS = 12 * 3600
+
+
+def _plausible_duration(seconds):
+    if seconds is None or seconds < 0 or seconds > MAX_PLAUSIBLE_WORKOUT_SECONDS:
+        return None
+    return int(seconds)
+
+
 @app.get("/api/workout/active")
 def api_get_active(user: dict = Depends(get_current_user)):
     active = get_active_workout(user["id"])
     if not active:
         return {"active": False}
     w_id, split_name, start_time, routine_id = active
-    _, sets = get_workout_details(user["id"], w_id)
+    meta, sets = get_workout_details(user["id"], w_id)
     return {
         "active": True,
         "id": w_id,
         "split": split_name,
         "start_time": start_time,
+        "notes": meta[3],
+        "elapsed_seconds": max(0, meta[4] or 0),   # il timer dell'app riparte da qui
         "routine": routine_store.get_routine(user["id"], routine_id) if routine_id else None,
-        "sets": [{"exercise": s[0], "order": s[1], "weight": s[2], "reps": s[3], "duration": s[4]} for s in sets]
+        "sets": [
+            {"id": s[5], "exercise": s[0], "order": s[1], "weight": s[2], "reps": s[3], "duration": s[4]}
+            for s in sets
+        ]
     }
 
 
@@ -542,7 +571,7 @@ def api_end_workout(user: dict = Depends(get_current_user)):
 
 @app.get("/api/workouts/history")
 def api_history(
-    limit: int = Query(default=10, ge=1, le=50),
+    limit: int = Query(default=10, ge=1, le=100),
     offset: int = Query(default=0, ge=0, le=100000),
     user: dict = Depends(get_current_user),
 ):
@@ -559,7 +588,12 @@ def api_history(
             "exercises_count": r[3],
             "sets_count": r[4],
             "volume": r[5],
-            "sets": [{"exercise": s[0], "weight": s[2], "reps": s[3], "duration": s[4]} for s in sets]
+            "notes": r[6],
+            "duration_seconds": _plausible_duration(r[7]),
+            "sets": [
+                {"id": s[5], "exercise": s[0], "weight": s[2], "reps": s[3], "duration": s[4]}
+                for s in sets
+            ]
         })
     return {"items": items, "has_more": has_more}
 
@@ -568,6 +602,33 @@ def api_history(
 def api_delete_workout(workout_id: int, user: dict = Depends(get_current_user)):
     if not delete_workout(user["id"], workout_id):
         raise HTTPException(status_code=404, detail="Workout non trovato")
+    return {"status": "deleted"}
+
+
+@app.put("/api/workouts/{workout_id}/notes")
+def api_set_workout_notes(workout_id: int, req: NotesReq, user: dict = Depends(get_current_user)):
+    if not set_workout_notes(user["id"], workout_id, req.notes.strip()):
+        raise HTTPException(status_code=404, detail="Workout non trovato")
+    return {"status": "ok"}
+
+
+@app.patch("/api/sets/{set_id}")
+def api_update_set(set_id: int, req: SetEditReq, user: dict = Depends(get_current_user)):
+    if req.reps == 0 and req.duration is None:
+        raise HTTPException(status_code=422, detail="Inserisci le ripetizioni o la durata della serie")
+    if req.duration is not None:
+        reps = 0   # una serie a tempo non ha ripetizioni
+    else:
+        reps = req.reps
+    if not update_set(user["id"], set_id, req.weight, reps, req.duration):
+        raise HTTPException(status_code=404, detail="Serie non trovata")
+    return {"status": "ok"}
+
+
+@app.delete("/api/sets/{set_id}")
+def api_delete_set(set_id: int, user: dict = Depends(get_current_user)):
+    if not delete_set(user["id"], set_id):
+        raise HTTPException(status_code=404, detail="Serie non trovata")
     return {"status": "deleted"}
 
 

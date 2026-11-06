@@ -116,3 +116,11 @@ def test_export_contains_user_data_only(make_user):
     assert len(data["workouts"]) == 1
     assert users.export_user_data(b)["workouts"] == []
     assert "password" not in str(data).lower()
+
+
+def test_export_includes_notes(make_user):
+    from src.database import set_workout_notes
+    uid = make_user()
+    w = start_new_workout(uid, "Push")
+    set_workout_notes(uid, w, "Ottima giornata")
+    assert users.export_user_data(uid)["workouts"][0]["notes"] == "Ottima giornata"

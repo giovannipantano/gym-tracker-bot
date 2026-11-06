@@ -96,7 +96,8 @@ def init_db():
                 start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 end_time TIMESTAMP,
                 split_name TEXT NOT NULL,
-                is_active INTEGER DEFAULT 1
+                is_active INTEGER DEFAULT 1,
+                notes TEXT NOT NULL DEFAULT ''
             );
         """)
         cursor.execute("""
@@ -126,6 +127,8 @@ def init_db():
             cursor.execute("ALTER TABLE workouts ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE")
         if "routine_id" not in workout_cols:
             cursor.execute("ALTER TABLE workouts ADD COLUMN routine_id INTEGER REFERENCES routines(id) ON DELETE SET NULL")
+        if "notes" not in workout_cols:
+            cursor.execute("ALTER TABLE workouts ADD COLUMN notes TEXT NOT NULL DEFAULT ''")
 
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_workouts_user ON workouts(user_id, is_active, start_time)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_sets_workout_id ON sets(workout_id)")
@@ -207,8 +210,9 @@ def log_sets_batch(user_id: int, workout_id: int, exercise: str, entries: list) 
         # Stessa ortografia degli esercizi nelle schede dell'utente ("panca" -> "Panca")
         exercise = canonical_exercise_name(exercise, _user_exercise_names(cursor, user_id))
 
+        # MAX e non COUNT: dopo aver eliminato una serie intermedia il numero d'ordine non deve ripetersi
         cursor.execute(
-            "SELECT COUNT(*) FROM sets WHERE workout_id = ? AND LOWER(TRIM(exercise_name)) = LOWER(?)",
+            "SELECT COALESCE(MAX(set_order), 0) FROM sets WHERE workout_id = ? AND LOWER(TRIM(exercise_name)) = LOWER(?)",
             (workout_id, exercise)
         )
         current_count = cursor.fetchone()[0]
@@ -260,7 +264,9 @@ def get_recent_workouts(user_id: int, limit: int = 10, offset: int = 0):
             SELECT w.id, w.start_time, w.split_name,
                    COUNT(DISTINCT LOWER(TRIM(s.exercise_name))) as num_exercises,
                    COUNT(s.id) as total_sets,
-                   COALESCE(SUM(s.weight * s.reps), 0) as total_volume
+                   COALESCE(SUM(s.weight * s.reps), 0) as total_volume,
+                   w.notes,
+                   CAST(strftime('%s', w.end_time) AS INTEGER) - CAST(strftime('%s', w.start_time) AS INTEGER)
             FROM workouts w
             LEFT JOIN sets s ON w.id = s.workout_id
             WHERE w.user_id = ? AND w.is_active = 0
@@ -274,8 +280,11 @@ def get_recent_workouts(user_id: int, limit: int = 10, offset: int = 0):
 def get_workout_details(user_id: int, workout_id: int):
     with get_connection() as conn:
         cursor = conn.cursor()
+        # elapsed: durata in secondi (fino a end_time, o fino ad ora se l'allenamento è in corso)
         cursor.execute(
-            "SELECT split_name, start_time, end_time FROM workouts WHERE id = ? AND user_id = ?",
+            """SELECT split_name, start_time, end_time, notes,
+                      CAST(strftime('%s', COALESCE(end_time, 'now')) AS INTEGER) - CAST(strftime('%s', start_time) AS INTEGER)
+               FROM workouts WHERE id = ? AND user_id = ?""",
             (workout_id, user_id)
         )
         meta = cursor.fetchone()
@@ -284,12 +293,43 @@ def get_workout_details(user_id: int, workout_id: int):
 
         # In ordine cronologico: gli esercizi compaiono nell'ordine in cui sono stati eseguiti
         cursor.execute("""
-            SELECT exercise_name, set_order, weight, reps, duration_seconds
+            SELECT exercise_name, set_order, weight, reps, duration_seconds, id
             FROM sets
             WHERE workout_id = ?
             ORDER BY id ASC
         """, (workout_id,))
         return meta, cursor.fetchall()
+
+
+def update_set(user_id: int, set_id: int, weight: float, reps: int, duration: int | None) -> bool:
+    """Corregge una serie. False se non esiste o non appartiene a un workout dell'utente."""
+    with get_connection() as conn:
+        cursor = conn.execute(
+            """UPDATE sets SET weight = ?, reps = ?, duration_seconds = ?
+               WHERE id = ? AND workout_id IN (SELECT id FROM workouts WHERE user_id = ?)""",
+            (weight, reps, duration, set_id, user_id)
+        )
+        return cursor.rowcount > 0
+
+
+def delete_set(user_id: int, set_id: int) -> bool:
+    """Elimina una singola serie dell'utente."""
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "DELETE FROM sets WHERE id = ? AND workout_id IN (SELECT id FROM workouts WHERE user_id = ?)",
+            (set_id, user_id)
+        )
+        return cursor.rowcount > 0
+
+
+def set_workout_notes(user_id: int, workout_id: int, notes: str) -> bool:
+    """Imposta le note di un allenamento dell'utente (in corso o concluso)."""
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "UPDATE workouts SET notes = ? WHERE id = ? AND user_id = ?",
+            (notes, workout_id, user_id)
+        )
+        return cursor.rowcount > 0
 
 
 def delete_last_exercise_sets(user_id: int, workout_id: int) -> tuple[str, int] | None:

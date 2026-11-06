@@ -267,3 +267,78 @@ def test_history_paging(client, logged):
     assert ids == sorted(ids, reverse=True) and len(set(ids)) == 5   # nessun doppione, dal più recente
     assert client.get("/api/workouts/history?limit=0", headers=logged).status_code == 422
     assert client.get("/api/workouts/history?offset=-1", headers=logged).status_code == 422
+
+
+def _workout_with_set(client, h, reps=8):
+    client.post("/api/workout/start", headers=h, json={"routine_id": None})
+    client.post("/api/workout/sets", headers=h, json={"exercise": "Panca", "sets": [{"weight": 80, "reps": reps}]})
+
+
+def test_active_workout_exposes_set_ids_notes_and_elapsed(client, logged):
+    _workout_with_set(client, logged)
+    active = client.get("/api/workout/active", headers=logged).json()
+    assert active["notes"] == "" and active["elapsed_seconds"] >= 0
+    assert isinstance(active["sets"][0]["id"], int)
+
+
+def test_edit_and_delete_single_set(client, logged):
+    _workout_with_set(client, logged)
+    set_id = client.get("/api/workout/active", headers=logged).json()["sets"][0]["id"]
+    assert client.patch(f"/api/sets/{set_id}", headers=logged, json={"weight": 82.5, "reps": 6}).status_code == 200
+    s = client.get("/api/workout/active", headers=logged).json()["sets"][0]
+    assert (s["weight"], s["reps"], s["duration"]) == (82.5, 6, None)
+    # serie a tempo: le ripetizioni vengono azzerate
+    assert client.patch(f"/api/sets/{set_id}", headers=logged, json={"weight": 0, "reps": 9, "duration": 60}).status_code == 200
+    s = client.get("/api/workout/active", headers=logged).json()["sets"][0]
+    assert (s["reps"], s["duration"]) == (0, 60)
+    assert client.patch(f"/api/sets/{set_id}", headers=logged, json={"weight": 5}).status_code == 422   # né reps né durata
+    assert client.patch(f"/api/sets/{set_id}", headers=logged, json={"weight": -1, "reps": 5}).status_code == 422
+    assert client.delete(f"/api/sets/{set_id}", headers=logged).status_code == 200
+    assert client.delete(f"/api/sets/{set_id}", headers=logged).status_code == 404
+    assert client.patch(f"/api/sets/{set_id}", headers=logged, json={"reps": 5}).status_code == 404
+    assert client.get("/api/workout/active", headers=logged).json()["sets"] == []
+
+
+def test_edit_set_in_workout_with_set(client, logged):
+    _workout_with_set(client, logged)
+    client.post("/api/workout/end", headers=logged)
+    item = client.get("/api/workouts/history", headers=logged).json()["items"][0]
+    assert client.patch(f"/api/sets/{item['sets'][0]['id']}", headers=logged, json={"weight": 90, "reps": 5}).status_code == 200
+    assert client.get("/api/workouts/history", headers=logged).json()["items"][0]["sets"][0]["weight"] == 90
+
+
+def test_workout_notes_roundtrip(client, logged):
+    _workout_with_set(client, logged)
+    wid = client.get("/api/workout/active", headers=logged).json()["id"]
+    assert client.put(f"/api/workouts/{wid}/notes", headers=logged, json={"notes": "  Dormito poco  "}).status_code == 200
+    assert client.get("/api/workout/active", headers=logged).json()["notes"] == "Dormito poco"
+    client.post("/api/workout/end", headers=logged)
+    assert client.get("/api/workouts/history", headers=logged).json()["items"][0]["notes"] == "Dormito poco"
+    assert client.put(f"/api/workouts/{wid}/notes", headers=logged, json={"notes": "x" * 1001}).status_code == 422
+    assert client.put("/api/workouts/9999/notes", headers=logged, json={"notes": "a"}).status_code == 404
+    assert client.put(f"/api/workouts/{wid}/notes", headers=logged, json={"notes": ""}).status_code == 200   # si può svuotare
+
+
+def test_history_duration(client, logged):
+    from src.database import get_connection
+    _workout_with_set(client, logged)
+    client.post("/api/workout/end", headers=logged)
+    wid = client.get("/api/workouts/history", headers=logged).json()["items"][0]["id"]
+    with get_connection() as conn:
+        conn.execute("UPDATE workouts SET start_time = '2025-01-01 10:00:00', end_time = '2025-01-01 10:52:30' WHERE id = ?", (wid,))
+    assert client.get("/api/workouts/history", headers=logged).json()["items"][0]["duration_seconds"] == 3150
+    with get_connection() as conn:   # allenamento dimenticato aperto per un giorno intero
+        conn.execute("UPDATE workouts SET end_time = '2025-01-02 10:00:00' WHERE id = ?", (wid,))
+    assert client.get("/api/workouts/history", headers=logged).json()["items"][0]["duration_seconds"] is None
+
+
+def test_other_user_cannot_touch_my_sets_or_notes(client):
+    a = auth(register(client, "a@example.com").json()["token"])
+    b = auth(register(client, "b@example.com").json()["token"])
+    _workout_with_set(client, a)
+    active = client.get("/api/workout/active", headers=a).json()
+    set_id, wid = active["sets"][0]["id"], active["id"]
+    assert client.patch(f"/api/sets/{set_id}", headers=b, json={"reps": 1}).status_code == 404
+    assert client.delete(f"/api/sets/{set_id}", headers=b).status_code == 404
+    assert client.put(f"/api/workouts/{wid}/notes", headers=b, json={"notes": "x"}).status_code == 404
+    assert client.get("/api/workout/active", headers=a).json()["sets"][0]["reps"] == 8
