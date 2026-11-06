@@ -442,6 +442,12 @@
           <button id="acc-resend" class="hidden btn-secondary mt-2" onclick="resendVerification()">Reinvia l'email di verifica</button>
         </div>
 
+        <div id="install-card" class="hidden card space-y-2">
+          <span class="label">Installa l'app</span>
+          <p id="install-card-text" class="text-xs text-muted"></p>
+          <button id="install-card-btn" class="btn-secondary w-full" onclick="installApp()">Aggiungi alla schermata Home</button>
+        </div>
+
         <div class="card space-y-2">
           <span class="label">Aspetto</span>
           <div id="theme-control" class="seg flex p-1 rounded-2xl text-xs"></div>
@@ -482,6 +488,17 @@
     </main>
 
     <!-- Barra di navigazione inferiore -->
+    <!-- Invito a installare l'app (visibile solo se non è già installata) -->
+    <div id="install-banner" class="hidden fixed left-3 right-3 z-30 mx-auto max-w-md card flex items-center gap-3 shadow-lg" style="bottom: calc(4.75rem + env(safe-area-inset-bottom)); padding: 12px 14px;">
+      <img src="/static/icons/icon-192.png" alt="" class="w-10 h-10 rounded-xl shrink-0" />
+      <div class="flex-1 min-w-0">
+        <div class="text-sm font-bold text-fg">Installa Gym Tracker</div>
+        <div id="install-banner-text" class="text-xs text-muted">Aprila come una vera app, a schermo intero.</div>
+      </div>
+      <button id="install-banner-btn" class="link shrink-0" onclick="installApp()">Installa</button>
+      <button class="text-faint px-1 shrink-0" onclick="dismissInstall()" aria-label="Chiudi">✕</button>
+    </div>
+
     <nav class="fixed bottom-0 left-0 right-0 bg-nav backdrop-blur-2xl border-t border-line flex justify-around py-2.5 pb-safe z-30">
       <button onclick="switchTab('workout')" id="nav-workout" class="flex flex-col items-center text-brand transition">
         <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" /></svg>
@@ -1614,6 +1631,45 @@
       if (typeof renderThemeControl === "function") renderThemeControl();
     });
 
+
+    // ============================ Installazione come app (PWA) ============================
+    // Android/Chrome: il browser avvisa con "beforeinstallprompt" e noi mostriamo il nostro invito.
+    // iPhone/iPad: Safari non ha un invito automatico, quindi spieghiamo i passaggi a mano.
+    let deferredInstall = null;
+    const isStandalone = () => (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true;
+    const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const INSTALL_SNOOZE_MS = 14 * 24 * 3600 * 1000;
+    function installSnoozed() {
+      try { const t = Number(localStorage.getItem("gym_install_dismissed") || 0); return t && Date.now() - t < INSTALL_SNOOZE_MS; } catch (e) { return false; }
+    }
+    function iosText() { return "Tocca il pulsante Condividi di Safari, poi «Aggiungi alla schermata Home»."; }
+    function renderInstall() {
+      const banner = $("install-banner"), card = $("install-card");
+      if (!banner || !card) return;
+      const canNative = !!deferredInstall, ios = isIOS() && !isStandalone();
+      const available = !isStandalone() && (canNative || ios);
+      card.classList.toggle("hidden", !available);
+      const loggedIn = !!me;
+      banner.classList.toggle("hidden", !(available && loggedIn && !installSnoozed()));
+      $("install-banner-text").textContent = canNative ? "Aprila come una vera app, a schermo intero." : iosText();
+      $("install-banner-btn").classList.toggle("hidden", !canNative);
+      $("install-card-text").textContent = canNative ? "Installa Gym Tracker: si apre a schermo intero e parte più in fretta." : iosText();
+      $("install-card-btn").classList.toggle("hidden", !canNative);
+    }
+    async function installApp() {
+      if (!deferredInstall) return;
+      deferredInstall.prompt();
+      try { await deferredInstall.userChoice; } catch (e) {}
+      deferredInstall = null;       // il prompt si può usare una volta sola
+      renderInstall();
+    }
+    function dismissInstall() {
+      try { localStorage.setItem("gym_install_dismissed", String(Date.now())); } catch (e) {}
+      renderInstall();
+    }
+    window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); deferredInstall = e; renderInstall(); });
+    window.addEventListener("appinstalled", () => { deferredInstall = null; renderInstall(); toast("App installata!", "ok"); });
+
     // ============================ Tab Account ============================
     const THEME_OPTIONS = [{ value: "auto", label: "Automatico" }, { value: "light", label: "Chiaro" }, { value: "dark", label: "Scuro" }];
     function renderThemeControl() {
@@ -1630,6 +1686,7 @@
       $("acc-resend").classList.toggle("hidden", me.email_verified);
       $("acc-marketing").checked = !!me.marketing_opt_in;
       renderThemeControl();
+      renderInstall();
     }
 
     const toggleMarketing = guard(async (checked) => {
