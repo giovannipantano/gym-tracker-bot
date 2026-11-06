@@ -20,9 +20,12 @@ const outDir = join(root, "src", "web", "vendor");
 const work = mkdtempSync(join(tmpdir(), "gymtracker-assets-"));
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 
-function run(cmd, args, cwd = root) {
-  // Comandi e argomenti sono costanti scritte qui sopra: nessun input esterno nella riga di comando.
-  execFileSync(cmd, args, { cwd, stdio: "inherit", shell: process.platform === "win32" });
+// Comandi e argomenti sono costanti o percorsi calcolati qui: nessun input esterno nella riga di comando.
+// useShell serve solo per npm su Windows (npm.cmd non si può avviare senza shell). In quel caso ogni
+// argomento va tra virgolette, altrimenti i percorsi con spazi (es. "C:\Program Files\nodejs") si spezzano.
+function run(cmd, args, { useShell = false } = {}) {
+  const finalArgs = useShell ? args.map((a) => `"${a}"`) : args;
+  execFileSync(cmd, finalArgs, { cwd: root, stdio: "inherit", shell: useShell });
 }
 
 try {
@@ -30,7 +33,8 @@ try {
 
   console.log(`\n== Scarico Chart.js ${CHARTJS_VERSION} e Tailwind ${TAILWIND_VERSION} (cartella temporanea)`);
   run(npm, ["install", "--prefix", work, "--no-audit", "--no-fund", "--no-save",
-            `chart.js@${CHARTJS_VERSION}`, `tailwindcss@${TAILWIND_VERSION}`]);
+            `chart.js@${CHARTJS_VERSION}`, `tailwindcss@${TAILWIND_VERSION}`],
+      { useShell: process.platform === "win32" });
 
   console.log("\n== Copio Chart.js");
   const chartDir = join(work, "node_modules", "chart.js");
