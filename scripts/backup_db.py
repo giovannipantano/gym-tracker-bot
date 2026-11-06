@@ -1,12 +1,17 @@
 """
 Backup a caldo del database SQLite, con copie locali a rotazione.
 
-Il backup non viene più inviato su Telegram. Le copie restano sul server (cartella BACKUP_DIR, di
-default "backups/"): proteggono da errori e corruzioni, ma NON dalla perdita del server. Per quello
-copia periodicamente la cartella altrove (rsync, rclone verso uno storage cloud, ecc.): vedi README.
+Le copie restano sul server (cartella BACKUP_DIR, di default "backups/"): proteggono da errori e
+corruzioni, ma NON dalla perdita del server. Per quello, se nel .env c'è BACKUP_REMOTE (una destinazione
+di rclone, es. "gdrive-crypt:gym-backups"), ogni nuova copia viene caricata anche lì e le copie remote
+più vecchie di BACKUP_REMOTE_KEEP_DAYS giorni vengono eliminate. Vedi README.
+
+Codici di uscita: 0 tutto ok; 1 backup locale fallito; 2 backup locale ok ma copia remota fallita.
 """
 import os
+import shutil
 import sqlite3
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -31,11 +36,40 @@ except ValueError:
     BACKUP_KEEP = 14
 
 
-def run_backup() -> bool:
-    """Crea una copia verificata e ruota le vecchie. True solo se la copia è valida."""
+BACKUP_REMOTE = (os.getenv("BACKUP_REMOTE") or "").strip()
+try:
+    REMOTE_KEEP_DAYS = max(1, int(os.getenv("BACKUP_REMOTE_KEEP_DAYS", "30")))
+except ValueError:
+    REMOTE_KEEP_DAYS = 30
+
+
+def upload_offsite(target: Path, remote: str = "") -> bool:
+    """Carica la copia su un archivio esterno con rclone e ripulisce le copie remote vecchie."""
+    remote = remote or BACKUP_REMOTE
+    if not remote:
+        return True
+    rclone = shutil.which("rclone")
+    if not rclone:
+        print("Errore: BACKUP_REMOTE è impostato ma rclone non è installato (sudo apt install rclone)")
+        return False
+    try:
+        subprocess.run([rclone, "copy", str(target), remote], check=True, timeout=1800)
+        subprocess.run(
+            [rclone, "delete", remote, "--min-age", f"{REMOTE_KEEP_DAYS}d", "--include", "workout_tracker_*.db"],
+            check=True, timeout=600,
+        )
+    except (subprocess.SubprocessError, OSError) as e:
+        print(f"Errore nella copia remota verso {remote}: {e}")
+        return False
+    print(f"Copia remota completata: {remote}")
+    return True
+
+
+def run_backup() -> Path | None:
+    """Crea una copia verificata e ruota le vecchie. Restituisce il file creato, None se fallisce."""
     if not DB_PATH.exists():
         print(f"Errore: File di database non trovato in {DB_PATH}")
-        return False
+        return None
 
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     os.chmod(BACKUP_DIR, 0o700)  # il backup contiene dati personali di tutti gli utenti
@@ -53,7 +87,7 @@ def run_backup() -> bool:
     except Exception as e:
         print(f"Errore durante la creazione del backup SQLite: {e}")
         target.unlink(missing_ok=True)
-        return False
+        return None
     finally:
         # Il context manager di sqlite3 non chiude le connessioni
         for conn in (dst_conn, src_conn):
@@ -67,9 +101,12 @@ def run_backup() -> bool:
     for old in sorted(BACKUP_DIR.glob("workout_tracker_*.db"))[:-BACKUP_KEEP]:
         old.unlink()
         print(f"Rimosso backup vecchio: {old.name}")
-    return True
+    return target
 
 
 if __name__ == "__main__":
     # Exit code diverso da zero in caso di errore, così cron/log lo rendono visibile
-    sys.exit(0 if run_backup() else 1)
+    created = run_backup()
+    if created is None:
+        sys.exit(1)
+    sys.exit(0 if upload_offsite(created) else 2)

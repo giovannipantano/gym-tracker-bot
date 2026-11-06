@@ -66,11 +66,57 @@ python3 scripts/claim_legacy_data.py --email tu@esempio.it --seed-template
 ## Backup
 
 ```bash
-python3 scripts/backup_db.py     # es. da cron ogni notte
+python3 scripts/backup_db.py
 ```
 
-Crea copie verificate in `BACKUP_DIR` (ultime `BACKUP_KEEP`, permessi 0700). Non vanno più su Telegram: proteggono da errori,
-**non dalla perdita del server**. Copia la cartella altrove con regolarità (rsync, rclone verso un cloud).
+Crea una copia verificata in `BACKUP_DIR` (ultime `BACKUP_KEEP`, permessi 0700). Da sola protegge da errori e corruzioni,
+**non dalla perdita del server**: per quello serve una copia fuori dal server.
+
+### Backup notturno automatico
+
+Sul server, `crontab -e` e aggiungi (ogni notte alle 03:15; sostituisci il percorso se diverso):
+
+```
+15 3 * * * cd /home/ubuntu/gym-tracker-bot && .venv/bin/python scripts/backup_db.py >> backups/backup.log 2>&1
+```
+
+Controllo: il giorno dopo la pagina `/admin` mostra "ultimo backup: N ore fa" (diventa arancione oltre 36 ore).
+
+### Copia fuori dal server (rclone)
+
+Il database contiene email e dati di tutti gli utenti: **cifra la copia** prima che esca dal server. rclone sa farlo
+con una destinazione "crypt". Una volta sola, sul server:
+
+```bash
+sudo apt install rclone
+rclone config      # 1) crea la destinazione cloud (es. Google Drive, Backblaze B2, Dropbox...) chiamata "cloud"
+                   # 2) crea una destinazione di tipo "crypt" chiamata "cloudcrypt" che punta a  cloud:gym-backups
+```
+
+Poi nel `.env` del server:
+
+```
+BACKUP_REMOTE=cloudcrypt:
+BACKUP_REMOTE_KEEP_DAYS=30
+```
+
+Da quel momento ogni backup notturno viene caricato (cifrato) e le copie remote più vecchie di 30 giorni vengono eliminate.
+Provalo a mano con `python3 scripts/backup_db.py; echo $?`: `0` ok, `1` backup locale fallito, `2` copia remota fallita.
+**Conserva la password di cifratura di rclone** (`rclone config show`) in un posto sicuro fuori dal server: senza,
+le copie remote non si possono leggere.
+
+Per ripristinare: scarica il file (`rclone copy cloudcrypt: ./ripristino`), ferma l'app (`sudo systemctl stop gymbot`),
+sostituisci `workout_tracker.db` con la copia, riavvia (`sudo systemctl start gymbot`).
+
+## Amministrazione e log
+
+- **Statistiche**: metti la tua email in `ADMIN_EMAILS` nel `.env` e riavvia. Dopo l'accesso trovi il link nella scheda
+  Account, oppure apri `/admin`: solo numeri (utenti, attivi, allenamenti, andamento a 30 giorni, backup, disco).
+  Con SMTP attivo serve anche l'email verificata.
+- **Log degli accessi**: ogni richiesta alle API lascia una riga con id utente, esito, durata e IP (mai email, password o token):
+  `journalctl -u gymbot | grep gymbot.access`. Per vedere cosa ha fatto un utente:
+  `journalctl -u gymbot | grep gymbot.access | grep "uid=3 "`. L'id di un utente si trova con
+  `sqlite3 workout_tracker.db "SELECT id, email FROM users;"`.
 
 ## Privacy
 
