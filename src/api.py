@@ -23,6 +23,7 @@ from src.auth import (
     verify_unsubscribe_signature,
 )
 from src.catalog import MUSCLE_GROUPS
+from src.pages import render_index
 from src.database import (
     delete_last_exercise_sets,
     delete_workout,
@@ -606,7 +607,7 @@ app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
 
 @app.get("/")
 def serve_pwa():
-    return FileResponse(WEB_DIR / "index.html")
+    return HTMLResponse(render_index(WEB_DIR), headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/privacy")

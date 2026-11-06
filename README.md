@@ -77,6 +77,19 @@ Crea copie verificate in `BACKUP_DIR` (ultime `BACKUP_KEEP`, permessi 0700). Non
 `src/web/privacy.html` è un **modello**: sostituisci i testi tra `[parentesi quadre]` con i tuoi dati prima di invitare altre persone.
 Non è consulenza legale. L'app permette già agli utenti di esportare i dati, eliminare l'account e revocare il consenso.
 
+## Asset locali (senza CDN)
+
+Per default la pagina carica Tailwind e Chart.js da CDN esterne. Per servirli dal tuo server (più veloce, funziona anche
+se la CDN è irraggiungibile), sul tuo PC (serve Node.js 18+ e internet), dalla radice del progetto:
+
+```bash
+node scripts/build_assets.mjs
+git add src/web/vendor && git commit -m "Aggiungi asset locali"
+```
+
+Il server li usa da solo non appena `src/web/vendor/tailwind.css` e `chart.umd.js` esistono; se mancano ricade sulle CDN.
+Rilancia lo script quando aggiungi nuove classi Tailwind a `index.html`. Le icone si rigenerano con `python scripts/make_icons.py` (richiede Pillow).
+
 ## Test
 
 ```bash
