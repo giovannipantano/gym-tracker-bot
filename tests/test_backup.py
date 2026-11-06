@@ -1,8 +1,6 @@
 """Backup: copia locale verificata, rotazione e caricamento esterno con rclone (simulato)."""
 import importlib
-import os
 import sqlite3
-import stat
 
 import pytest
 
@@ -43,32 +41,36 @@ def test_offsite_noop_without_remote(backup):
     assert backup.upload_offsite(backup.run_backup()) is True
 
 
-def _fake_rclone(tmp_path, monkeypatch, exit_code):
-    log = tmp_path / "rclone.log"
-    script = tmp_path / "bin" / "rclone"
-    script.parent.mkdir()
-    script.write_text(f'#!/bin/sh\necho "$@" >> {log}\nexit {exit_code}\n')
-    script.chmod(script.stat().st_mode | stat.S_IEXEC)
-    monkeypatch.setenv("PATH", f"{script.parent}{os.pathsep}{os.environ['PATH']}")
-    return log
+def _fake_rclone(monkeypatch, backup, exit_code):
+    """Simula rclone senza eseguire nulla (funziona su qualsiasi sistema, anche Windows)."""
+    import subprocess
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        if exit_code:
+            raise subprocess.CalledProcessError(exit_code, cmd)
+
+    monkeypatch.setattr(backup.shutil, "which", lambda name: "/usr/bin/rclone")
+    monkeypatch.setattr(backup.subprocess, "run", fake_run)
+    return calls
 
 
-def test_offsite_uploads_then_prunes(backup, tmp_path, monkeypatch):
-    log = _fake_rclone(tmp_path, monkeypatch, 0)
+def test_offsite_uploads_then_prunes(backup, monkeypatch):
+    calls = _fake_rclone(monkeypatch, backup, 0)
     target = backup.run_backup()
     assert backup.upload_offsite(target, "remoto:gym") is True
-    lines = log.read_text().splitlines()
-    assert lines[0] == f"copy {target} remoto:gym"
-    assert lines[1].startswith("delete remoto:gym --min-age 30d")
+    assert calls[0] == ["/usr/bin/rclone", "copy", str(target), "remoto:gym"]
+    assert calls[1][:3] == ["/usr/bin/rclone", "delete", "remoto:gym"] and "30d" in calls[1]
 
 
-def test_offsite_failure_is_reported(backup, tmp_path, monkeypatch, capsys):
-    _fake_rclone(tmp_path, monkeypatch, 1)
+def test_offsite_failure_is_reported(backup, monkeypatch, capsys):
+    _fake_rclone(monkeypatch, backup, 1)
     assert backup.upload_offsite(backup.run_backup(), "remoto:gym") is False
     assert "Errore nella copia remota" in capsys.readouterr().out
 
 
 def test_offsite_without_rclone_installed(backup, monkeypatch, capsys):
-    monkeypatch.setenv("PATH", "/nonexistent")
+    monkeypatch.setattr(backup.shutil, "which", lambda name: None)
     assert backup.upload_offsite(backup.run_backup(), "remoto:gym") is False
     assert "rclone non è installato" in capsys.readouterr().out

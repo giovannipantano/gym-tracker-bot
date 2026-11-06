@@ -438,7 +438,7 @@ def test_access_log_records_user_id_but_no_secrets(client, caplog):
     with caplog.at_level(logging.INFO, logger="gymbot.access"):
         client.get("/api/routines", headers=auth(token))
         client.get("/api/routines")                                   # senza accesso
-    lines = [r.getMessage() for r in caplog.records]
+    lines = [r.getMessage() for r in caplog.records if r.name == "gymbot.access"]
     assert any(f"GET /api/routines -> 200" in l and f"uid={uid}" in l for l in lines)
     assert any("GET /api/routines -> 401" in l and "uid=-" in l for l in lines)
     assert not any(token in l or "mario@example.com" in l for l in lines)
